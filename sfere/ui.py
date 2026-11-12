@@ -5,7 +5,6 @@ down, and has buttons for everything the keyboard shortcuts do.
 """
 from __future__ import annotations
 
-import copy
 import re
 import time
 from pathlib import Path
@@ -14,7 +13,8 @@ from .audio.sources import DEFAULT_MONITOR, FileSource, list_sources
 from .camera import camera_controls_from_settings
 from .fx.builtin import BUILTIN
 from .fx.shaders import ShaderEffect
-from .scenes import PRESETS
+from .render.post import DEFAULT_POST
+from .scenes import BIND_SOURCES, Missing
 from .touch import touch_mode, wants_xwayland
 
 TABS = ["Camera", "Audio", "Scenes", "Output", "Debug", "Help"]
@@ -52,6 +52,8 @@ class Panels:
         self._gesture = None          # touch: None, "control", or the key of the window being scrolled
         self._pressed_value = None    # touch: (slider label, value before the press)
         self._guide = None
+        self.renaming = None          # the new name being typed, while renaming a scene
+        self.rename_msg = ""
         self.drag_button = 0
 
     # ---------------------------------------------------------------- style and touch
@@ -83,7 +85,8 @@ class Panels:
     def _touch_scroll(self, key: str):
         """Touch mode: a finger dragged mostly up or down scrolls this window, even when it
         started on a button or slider (which is then cancelled); a sideways drag goes to the
-        control under it. Call before ending the window."""
+        control under it. The scroll bar moves with the finger, as if dragging it. Call before
+        ending the window."""
         im = self.imgui
         if not self.touch:
             return
@@ -97,7 +100,7 @@ class Panels:
             if self._gesture == key and im.is_any_item_active():
                 im.internal.clear_active_id()
         if self._gesture == key:
-            im.set_scroll_y(im.get_scroll_y() - im.get_io().mouse_delta.y)
+            im.set_scroll_y(im.get_scroll_y() + im.get_io().mouse_delta.y)
 
     def _slider(self, label, v, lo, hi, fmt=None):
         """slider_float / slider_int. In touch mode a slider jumps to the finger, so if that
@@ -171,10 +174,7 @@ class Panels:
         if self._button("Mirror (M)", app.engine.mirror):
             app.engine.mirror = not app.engine.mirror
         im.spacing()
-        self._flow_begin()
-        for i, name in enumerate(app.scenes.names):
-            if self._button(f"{i + 1} {name}", app.scenes.current.name == name):
-                app.select_scene(i)
+        self._scene_combo()
         for msg in app.scenes.messages[-4:]:
             im.text_colored((1, 0.7, 0.3, 1), msg[:110])
         im.end_group()
@@ -335,59 +335,243 @@ class Panels:
             self.app.tap_tempo()
 
     # ---------------------------------------------------------------- scenes
-    def tab_scenes(self):
+    def _scene_combo(self):
+        """The scene dropdown: numbers are the keys that select a scene."""
         im, mgr = self.imgui, self.app.scenes
+        labels = [f"{i + 1}  {n}" if i < 9 else f"    {n}" for i, n in enumerate(mgr.names)]
+        im.set_next_item_width(min(self.px(300), im.get_content_region_avail().x * 0.7))
+        if im.begin_combo("Scene", labels[mgr.index], im.ComboFlags_.height_large):
+            for i, label in enumerate(labels):
+                if im.selectable(label, i == mgr.index)[0]:
+                    self.app.select_scene(i)
+            self._touch_scroll("scenes")
+            im.end_combo()
+
+    def _bind_button(self, scene, target: str, name: str, lo: float, hi: float, value: float):
+        """♪ before a setting: drive it from the music or the ball's motion. Highlighted when
+        bound. Returns the binding, if any."""
+        im = self.imgui
+        b = scene.binding(target)
+        popup = f"bind##{target}"
+        if b:
+            im.push_style_color(im.Col_.button, ACCENT)
+        if im.button(f"♪##{target}"):
+            im.open_popup(popup)
+        if b:
+            im.pop_style_color()
+        if im.is_item_hovered():
+            im.set_tooltip("Drive this setting from the music or the ball")
+        im.same_line()
+        if im.begin_popup(popup):
+            im.text(f"Drive {name} from")
+            sources = [src for src, _ in BIND_SOURCES]
+            labels = ["Nothing: set by hand"] + [label for _, label in BIND_SOURCES]
+            cur = sources.index(b.source) + 1 if b and b.source in sources else 0
+            ch, i = im.combo(f"##source{target}", cur, labels)
+            if ch:
+                if i == 0:
+                    scene.set_binding(target, None)
+                else:      # a new binding starts at the current value and reaches halfway to the top
+                    start = b.lo if b else value
+                    end = b.hi if b else min(hi, value + (hi - lo) * 0.5)
+                    scene.set_binding(target, sources[i - 1], start, end, b.smooth if b else 0.15)
+                b = scene.binding(target)
+            if b:
+                _, b.lo = self._slider(f"When quiet / still##{target}", b.lo, float(lo), float(hi))
+                _, b.hi = self._slider(f"When loud / fast##{target}", b.hi, float(lo), float(hi))
+                _, b.smooth = self._slider(f"Smoothing (s)##{target}", b.smooth, 0.0, 1.0, "%.2f")
+                im.text_disabled(f"Now {b.value or 0:.2f}")
+            if im.button("Done"):
+                im.close_current_popup()
+            im.end_popup()
+        return b
+
+    def _bind_spacer(self):
+        """Keeps settings that can't be bound lined up with those that can."""
+        im = self.imgui
+        st = im.get_style()
+        im.dummy((im.calc_text_size("♪").x + 2 * st.frame_padding.x, im.get_frame_height()))
+        im.same_line()
+
+    def tab_scenes(self):
+        im, app, mgr = self.imgui, self.app, self.app.scenes
+        self._scene_library()
         scene = mgr.current
-        im.text(f"Editing {scene.name}.  Pick scenes with the buttons at the top or keys 1-9.")
+        im.separator_text("Look")
         _, mgr.fade_time = self._slider("Crossfade (s)", mgr.fade_time, 0.1, 8.0)
-        im.separator_text("Post")
+        im.text("Palette")
+        for ci, c in enumerate(scene.palette):
+            im.same_line()
+            ch, nc = im.color_edit3(f"##palette{ci}", list(c[:3]), im.ColorEditFlags_.no_inputs)
+            if ch:
+                scene.palette[ci] = tuple(nc)
+        im.text_disabled("Effects take their colors from the palette.")
+        ranges = {"decay": (0, 0.995), "zoom": (0.97, 1.03), "rotate": (-1, 1), "hue_shift": (-1, 1),
+                  "kaleido": (0, 12), "kaleido_spin": (-1, 1), "exposure": (0.2, 3), "bloom": (0, 3)}
         for k in ("decay", "bloom", "bloom_threshold", "exposure", "vignette", "zoom", "rotate", "hue_shift",
                   "kaleido", "kaleido_spin"):
-            from .render.post import DEFAULT_POST
-            lo, hi = {"decay": (0, 0.995), "zoom": (0.97, 1.03), "rotate": (-1, 1), "hue_shift": (-1, 1),
-                      "kaleido": (0, 12), "kaleido_spin": (-1, 1), "exposure": (0.2, 3), "bloom": (0, 3)}.get(k, (0, 1))
-            _, scene.post[k] = self._slider(f"{k}##post", float(scene.post.get(k, DEFAULT_POST[k])), float(lo), float(hi))
-        remove = None
-        for li, eff in enumerate(scene.layers):
-            label = f"{li + 1}. {getattr(eff, 'key', eff.name)}"
-            if im.collapsing_header(f"{label}##layer{li}"):
-                if im.button(f"Remove layer##rm{li}"):
-                    remove = li
-                if isinstance(eff, ShaderEffect):
-                    im.text_disabled(eff.license_line())
-                    if eff.error:
-                        im.text_colored((1, 0.4, 0.4, 1), eff.error[:400])
-                    if eff.unsupported:
-                        im.text_colored((1, 0.7, 0.3, 1), "Unsupported: " + ", ".join(eff.unsupported))
-                bound = {b.target.split(":", 1)[1] for b in scene.bindings if b.target.startswith(f"{li}:")}
-                bound |= {b.target.split(".", 1)[1] for b in scene.bindings if b.target.startswith(eff.name + ".")}
-                for k, p in eff.params.items():
-                    v = eff.values[k]
-                    tag = f"{k}##{li}"
-                    if k in bound:
-                        im.text(f"{k}: {v:.2f}  ← bound")
-                    elif p.kind == "bool":
-                        _, nv = im.checkbox(tag, bool(v))
-                        eff.values[k] = float(nv)
-                    elif p.kind == "int":
-                        _, eff.values[k] = self._slider(tag, int(v), int(p.lo), int(p.hi))
-                    elif p.kind == "point":
-                        im.text(f"{k}: follows the ball")
-                    elif p.kind == "color":
-                        _, c = im.color_edit3(tag, list(v[:3]))
-                        eff.values[k] = (*c, 1.0)
-                    else:
-                        _, eff.values[k] = self._slider(tag, float(v), float(p.lo), float(p.hi))
-                    if p.help and im.is_item_hovered():
-                        im.set_tooltip(p.help)
-        if remove is not None:
-            mgr.remove_layer(remove)
-            return
+            lo, hi = ranges.get(k, (0, 1))
+            v = float(scene.post.get(k, DEFAULT_POST[k]))
+            b = self._bind_button(scene, f"post.{k}", k, lo, hi, v)
+            if b:
+                im.text(f"{k}: {v:.2f}  ← {dict(BIND_SOURCES).get(b.source, b.source)}")
+            else:
+                _, scene.post[k] = self._slider(f"{k}##post", v, float(lo), float(hi))
+        self._layers(mgr, scene)
         self._add_layer(mgr)
-        if scene.bindings:
-            im.separator_text("Bindings")
-            for b in scene.bindings:
-                im.text(f"{b.target} ← {b.source}  ({b.lo:g} … {b.hi:g})  now {b.value or 0:.2f}")
+
+    def _scene_library(self):
+        im, app, mgr = self.imgui, self.app, self.app.scenes
+        im.separator_text("Scene")
+        if self.renaming is not None:
+            im.set_next_item_width(self.px(260))
+            enter, self.renaming = im.input_text("New name", self.renaming, im.InputTextFlags_.enter_returns_true)
+            im.same_line()
+            if im.button("Save name") or enter:
+                if mgr.rename(self.renaming):
+                    self.renaming = None
+                    app.settings["scene"] = mgr.current.name
+                    app.save_scenes()
+                else:
+                    self.rename_msg = "That name is taken or empty."
+            im.same_line()
+            if im.button("Cancel"):
+                self.renaming = None
+            if self.renaming is not None and self.rename_msg:
+                im.text_colored((1, 0.6, 0.3, 1), self.rename_msg)
+            return
+        i, n = mgr.index, len(mgr.names)
+        self._flow_begin()
+        if self._button("New"):
+            mgr.new_scene()
+            self._library_changed()
+        if self._button("Duplicate"):
+            mgr.new_scene(copy_current=True)
+            self._library_changed()
+        if self._button("Rename"):
+            self.renaming, self.rename_msg = mgr.current.name, ""
+        im.begin_disabled(i == 0)
+        if self._button("Move earlier"):
+            mgr.move(-1)
+            self._library_changed()
+        im.end_disabled()
+        im.begin_disabled(i == n - 1)
+        if self._button("Move later"):
+            mgr.move(1)
+            self._library_changed()
+        im.end_disabled()
+        if mgr.preset_of_current() and self._button("Reset to preset"):
+            im.open_popup("Reset scene?")
+        im.begin_disabled(n < 2)
+        if self._button("Delete"):
+            im.open_popup("Delete scene?")
+        im.end_disabled()
+        im.text_disabled(f"Scene {i + 1} of {n}.  The first nine are on the number keys.")
+        flags = im.WindowFlags_.always_auto_resize
+        if im.begin_popup_modal("Delete scene?", None, flags)[0]:
+            im.text(f"Delete {mgr.current.name}? This can't be undone.")
+            if im.button("Delete scene"):
+                mgr.delete()
+                self._library_changed()
+                im.close_current_popup()
+            im.same_line()
+            if im.button("Keep it"):
+                im.close_current_popup()
+            im.end_popup()
+        if im.begin_popup_modal("Reset scene?", None, flags)[0]:
+            im.text(f"Put {mgr.current.name} back to the built-in {mgr.preset_of_current()}?\n"
+                    "Its layers, settings and bindings are replaced.")
+            if im.button("Reset"):
+                mgr.reset_to_preset()
+                self._library_changed()
+                im.close_current_popup()
+            im.same_line()
+            if im.button("Cancel##reset"):
+                im.close_current_popup()
+            im.end_popup()
+
+    def _library_changed(self):
+        self.app.settings["scene"] = self.app.scenes.current.name
+        self.app.save_scenes()
+
+    def _layers(self, mgr, scene):
+        im = self.imgui
+        im.separator_text("Layers")
+        im.text_disabled("Top layer first. Filters process the layers below them.")
+        action, n = None, len(scene.layers)
+        for li in reversed(range(n)):
+            eff = scene.layers[li]
+            key = getattr(eff, "key", eff.name)
+            label = f"{li + 1}. {key}{'   (off)' if not eff.enabled else ''}"
+            if not im.collapsing_header(f"{label}###layer{li}"):
+                continue
+            im.push_id(f"layer{li}")
+            if not isinstance(eff, Missing):
+                _, eff.enabled = im.checkbox("On", eff.enabled)
+                im.same_line()
+            im.begin_disabled(li == n - 1)
+            if im.button("Up"):
+                action = (mgr.move_layer, li, 1)
+            im.end_disabled()
+            im.same_line()
+            im.begin_disabled(li == 0)
+            if im.button("Down"):
+                action = (mgr.move_layer, li, -1)
+            im.end_disabled()
+            im.same_line()
+            if im.button("Duplicate"):
+                action = (mgr.duplicate_layer, li)
+            im.same_line()
+            if im.button("Reset"):
+                action = (mgr.reset_layer, li)
+            if im.is_item_hovered():
+                im.set_tooltip("Default settings, no bindings")
+            im.same_line()
+            if im.button("Remove"):
+                action = (mgr.remove_layer, li)
+            im.pop_id()
+            if isinstance(eff, Missing):
+                im.text_colored((1, 0.6, 0.3, 1), f"{key} isn't available. The layer keeps its settings "
+                                "and works again once the effect is back.")
+                continue
+            if isinstance(eff, ShaderEffect):
+                im.text_disabled(eff.license_line())
+                if eff.error:
+                    im.text_colored((1, 0.4, 0.4, 1), eff.error[:400])
+                if eff.unsupported:
+                    im.text_colored((1, 0.7, 0.3, 1), "Unsupported: " + ", ".join(eff.unsupported))
+            self._params(scene, li, eff)
+        if action:
+            fn, *args = action
+            fn(*args)
+
+    def _params(self, scene, li, eff):
+        im = self.imgui
+        for k, p in eff.params.items():
+            v = eff.values[k]
+            tag = f"{k}##{li}"
+            if p.kind == "float":
+                b = self._bind_button(scene, f"{li}:{k}", k, p.lo, p.hi, float(v))
+                if b:
+                    im.text(f"{k}: {float(v):.2f}  ← {dict(BIND_SOURCES).get(b.source, b.source)}")
+                else:
+                    _, eff.values[k] = self._slider(tag, float(v), float(p.lo), float(p.hi))
+            else:
+                self._bind_spacer()
+                if p.kind == "bool":
+                    _, nv = im.checkbox(tag, bool(v))
+                    eff.values[k] = float(nv)
+                elif p.kind == "int":
+                    _, eff.values[k] = self._slider(tag, int(v), int(p.lo), int(p.hi))
+                elif p.kind == "point":
+                    im.text(f"{k}: follows the ball")
+                elif p.kind == "color":
+                    _, c = im.color_edit3(tag, list(v[:3]))
+                    eff.values[k] = (*c, 1.0)
+                else:
+                    _, eff.values[k] = self._slider(tag, float(v), float(p.lo), float(p.hi))
+            if p.help and im.is_item_hovered():
+                im.set_tooltip(p.help)
 
     def _add_layer(self, mgr):
         im = self.imgui
@@ -395,17 +579,13 @@ class Panels:
         _, self.layer_search = im.input_text("Search##addlayer", self.layer_search)
         q = self.layer_search.lower()
         keys = [k for k in sorted(BUILTIN) + sorted(mgr.shader_index) if q in k.lower()]
-        im.text_disabled(f"{len(keys)} effects. Tap or click to add on top; filters process the layers below them.")
+        im.text_disabled(f"{len(keys)} effects. Tap or click one to add it on top.")
         if im.begin_list_box("##addlist", (-1, self.px(200))):
             for k in keys:
                 if im.selectable(k, False)[0]:
                     mgr.add_layer(k)
             self._touch_scroll("addlist")
             im.end_list_box()
-        idx = mgr.names.index(mgr.current.name)
-        if mgr.presets[idx]["layers"] != PRESETS[idx]["layers"] and im.button("Reset layers to the preset"):
-            mgr.presets[idx]["layers"] = copy.deepcopy(PRESETS[idx]["layers"])
-            mgr.select(idx, immediate=True)
 
     # ---------------------------------------------------------------- output
     def tab_output(self):

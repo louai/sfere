@@ -9,11 +9,12 @@ import cv2
 import moderngl
 import numpy as np
 
+from . import library
 from . import settings as settings_mod
 from .compat import load_gui
 from .engine import Engine
 from .render.gl import GL, attach_current_context
-from .scenes import PRESETS, SceneManager
+from .scenes import SceneManager
 from .touch import touch_mode, touchscreen_present, wants_xwayland
 
 OUTPUT_FS = """#version 330
@@ -74,9 +75,7 @@ class App:
         self.fullscreen_monitor = None
         self.p_out = self.gl.program(OUTPUT_FS)
         self.render_size = self._native_render_size()
-        edited = self.settings.get("scene_layers", {})
-        presets = [{**p, "layers": edited[p["name"]]} if p["name"] in edited else p for p in PRESETS]
-        self.scenes = SceneManager(self.gl, self.render_size, presets)
+        self.scenes = SceneManager(self.gl, self.render_size, library.load(self.settings))
         self.scenes.gl_current = self.output_context
         out = self.settings["output"]
         self.scenes.aspect_mode = out.get("aspect", "fit")
@@ -263,6 +262,12 @@ class App:
             self.scenes.select(i)
             self.settings["scene"] = self.scenes.names[i]
 
+    def save_scenes(self):
+        """Write the scene library, with the current scene's edits, to scenes.json."""
+        self.scenes.sync()
+        if not self.args.no_save:
+            library.save(self.scenes.presets)
+
     def tap_tempo(self):
         now = time.monotonic()
         self.taps = [t for t in self.taps if now - t < 3.0] + [now]
@@ -421,12 +426,13 @@ class App:
                 s["audio"]["gains"] = {k: v.gain for k, v in self.engine.audio.sources.items() if v.kind != "file"}
             if self.args.video is None:
                 s["camera"]["mirror"] = self.engine.mirror
-            s["scene_layers"] = {p["name"]: p["layers"] for p, orig in zip(self.scenes.presets, PRESETS)
-                                 if p["layers"] != orig["layers"]}
+            s.pop("scene_layers", None)     # now in scenes.json
+            s["scene"] = self.scenes.current.name
             s["output"]["aspect"] = self.scenes.aspect_mode
             s["output"]["flip_x"], s["output"]["flip_y"] = self.scenes.flip[0] < 0, self.scenes.flip[1] < 0
             if not self.args.no_save:
                 settings_mod.save(s)
+                self.save_scenes()
         finally:
             self.engine.close()
             self.glfw.terminate()

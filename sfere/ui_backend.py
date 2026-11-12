@@ -36,7 +36,7 @@ def _system_font() -> str | None:
     if not shutil.which("fc-match"):
         return None
     try:
-        path = subprocess.run(["fc-match", "-f", "%{file}", "sans-serif:style=Regular:charset=2014 2190 2192 2265 2026"],
+        path = subprocess.run(["fc-match", "-f", "%{file}", "sans-serif:style=Regular:charset=2014 2190 2192 2265 2026 266a"],
                               capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None

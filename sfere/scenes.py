@@ -16,7 +16,7 @@ import moderngl
 import numpy as np
 
 from .ballfilter import BallState
-from .fx.base import Frame, ScreenBall
+from .fx.base import Effect, Frame, ScreenBall
 from .fx.builtin import BUILTIN
 from .fx.shaders import ShaderEffect, discover
 from .render.gl import GL
@@ -162,95 +162,165 @@ class Binding:
         return self.value
 
 
+class Missing(Effect):
+    """Stands in for a layer whose effect can't be built (shader file gone, broken spec), so
+    the layer keeps its place and settings and is saved back unchanged."""
+    name = "missing"
+
+    def __init__(self, gl, layer: dict):
+        super().__init__(gl)
+        self.layer = copy.deepcopy(layer)
+        self.key = layer.get("effect", "?")
+
+
+def _plain(v):
+    """A parameter value as JSON: tuples become lists, numpy numbers plain numbers."""
+    if isinstance(v, (tuple, list, np.ndarray)):
+        return [_plain(x) for x in v]
+    return v.item() if isinstance(v, np.generic) else v
+
+
+def to_hex(c) -> str:
+    return "#" + "".join(f"{int(round(max(0.0, min(1.0, float(x))) * 255)):02x}" for x in c[:3])
+
+
+# what a parameter can follow (Binding sources), for the binding editor
+BIND_SOURCES = [
+    ("audio.sub", "Sub-bass"), ("audio.bass", "Bass"), ("audio.mid", "Mids"), ("audio.high", "Highs"),
+    ("audio.level", "Loudness"), ("audio.beat", "Beat pulse"), ("audio.beat_phase", "Beat phase"),
+    ("ball.speed", "Ball speed"), ("ball.accel", "Ball acceleration"), ("ball.curvature", "Ball curve"),
+]
+
+
 class Scene:
+    """A running scene. Layer bindings target '<layer index>:<param>', post ones 'post.<key>';
+    to_spec() turns the live state, edits included, back into a spec."""
+
     def __init__(self, gl: GL, spec: dict, size: tuple[int, int], shader_index: dict):
         self.gl = gl
         self.spec = copy.deepcopy(spec)
         self.name = spec["name"]
-        self.palette = [hexrgb(c) if isinstance(c, str) else c for c in spec.get("palette", ["#ffffff"])]
+        self.palette = [hexrgb(c) if isinstance(c, str) else tuple(c) for c in spec.get("palette", ["#ffffff"])]
         self.post = dict(spec.get("post", {}))
         self.pipeline = Pipeline(gl, size)
         self.layers: list = []
         self.bindings: list[Binding] = []
         self.errors: list[str] = []
-        for k, v in spec.get("bind", {}).items():
-            self.bindings.append(Binding(k, v))
+        self.shader_index = shader_index
+        self._load(spec)
+
+    def _load(self, spec: dict) -> None:
+        """Build layers and bindings from a spec (the pipeline, and with it the trails, stays)."""
+        for e in self.layers:
+            e.release()
+        self.layers, self.bindings = [], []
         for i, layer in enumerate(spec.get("layers", [])):
-            eff = self._make(layer, shader_index)
-            if eff is None:
-                continue
-            self.layers.append(eff)
+            self.layers.append(self._make(layer))
             for k, v in layer.get("bind", {}).items():
                 self.bindings.append(Binding(f"{i}:{k}", v))
+        for target, v in spec.get("bind", {}).items():
+            if not target.startswith("post."):     # '<effect name>.<param>': the first such layer
+                name, _, param = target.partition(".")
+                i = next((i for i, e in enumerate(self.layers) if name in (e.name, getattr(e, "key", None))), None)
+                if i is None:
+                    continue
+                target = f"{i}:{param}"
+            self.bindings.append(Binding(target, v))
 
-    def _make(self, layer: dict, shader_index: dict):
+    def _make(self, layer: dict):
         key = layer["effect"]
+        eff = None
         try:
             if key in BUILTIN:
-                return BUILTIN[key](self.gl, **layer.get("values", {}))
-            if key in shader_index:
-                cls, path = shader_index[key]
+                eff = BUILTIN[key](self.gl, **layer.get("values", {}))
+            elif key in self.shader_index:
+                cls, path = self.shader_index[key]
                 eff = cls(self.gl, path, **layer.get("values", {}))
                 eff.key = key
                 if eff.error:
                     self.errors.append(f"{key}: {eff.error}")
-                return eff
-            self.errors.append(f"{key}: no such effect")
+            else:
+                self.errors.append(f"{key}: no such effect")
         except Exception as e:
             self.errors.append(f"{key}: {e}")
-        return None
-
-    def add_layer(self, key: str, shader_index: dict) -> bool:
-        layer = {"effect": key}
-        eff = self._make(layer, shader_index)
         if eff is None:
-            return False
-        self.layers.append(eff)
-        self.spec.setdefault("layers", []).append(layer)
-        return True
+            eff = Missing(self.gl, layer)
+        eff.enabled = bool(layer.get("enabled", True))
+        return eff
 
-    def remove_layer(self, i: int) -> None:
-        """Drop layer i; bindings to later layers ('<index>:<param>') move down with them."""
-        self.layers.pop(i).release()
-        del self.spec["layers"][i]
-        kept = []
-        for b in self.bindings:
-            head, sep, param = b.target.partition(":")
-            if sep and head.isdigit():
-                j = int(head)
-                if j == i:
-                    continue
-                if j > i:
-                    b.target = f"{j - 1}:{param}"
-            kept.append(b)
-        self.bindings = kept
+    # ------------------------------------------------------------------ spec
+    def layer_spec(self, i: int) -> dict:
+        eff = self.layers[i]
+        if isinstance(eff, Missing):
+            return copy.deepcopy(eff.layer)
+        binds = {b.target.split(":", 1)[1]: [b.source, b.lo, b.hi, b.smooth]
+                 for b in self.bindings if b.target.startswith(f"{i}:")}
+        values = {k: _plain(v) for k, v in eff.values.items()
+                  if k in eff.params and eff.params[k].kind != "point" and k not in binds
+                  and _plain(v) != _plain(eff.params[k].default)}
+        out = {"effect": getattr(eff, "key", eff.name)}
+        if values:
+            out["values"] = values
+        if binds:
+            out["bind"] = binds
+        if not eff.enabled:
+            out["enabled"] = False
+        return out
 
+    def to_spec(self) -> dict:
+        spec = {k: copy.deepcopy(v) for k, v in self.spec.items() if k not in ("name", "palette", "post", "layers", "bind")}
+        post_binds = {b.target: [b.source, b.lo, b.hi, b.smooth] for b in self.bindings if b.target.startswith("post.")}
+        spec.update(name=self.name, palette=[to_hex(c) for c in self.palette],
+                    post={k: _plain(v) for k, v in self.post.items() if f"post.{k}" not in post_binds},
+                    layers=[self.layer_spec(i) for i in range(len(self.layers))])
+        if post_binds:
+            spec["bind"] = post_binds
+        return spec
+
+    def edit_layers(self, change) -> None:
+        """Apply change(list of layer specs) and rebuild the layers; trails carry on."""
+        spec = self.to_spec()
+        change(spec["layers"])
+        self.errors = []
+        self._load(spec)
+        self.spec = spec
+
+    # ------------------------------------------------------------------ bindings
+    def binding(self, target: str) -> Binding | None:
+        return next((b for b in self.bindings if b.target == target), None)
+
+    def set_binding(self, target: str, source: str | None, lo: float = 0.0, hi: float = 1.0, smooth: float = 0.15):
+        """Drive a parameter ('<layer>:<param>' or 'post.<key>') from a source, or stop (None)."""
+        old = self.binding(target)
+        self.bindings = [b for b in self.bindings if b.target != target]
+        if source:
+            b = Binding(target, [source, lo, hi, smooth])
+            b.value = old.value if old else None
+            self.bindings.append(b)
+
+    # ------------------------------------------------------------------ frame
     def reload_changed(self, shader_index: dict) -> list[str]:
         """Hot reload: rebuild shader layers whose files changed, keeping their values."""
+        self.shader_index = shader_index
         reloaded = []
         for i, eff in enumerate(self.layers):
             if isinstance(eff, ShaderEffect) and eff.changed():
                 cls, path = type(eff), eff.path
                 new = cls(self.gl, path, **eff.values)
                 new.key = getattr(eff, "key", path.stem)
+                new.enabled = eff.enabled
                 eff.release()
                 self.layers[i] = new
                 reloaded.append(f"{new.key}: {'error: ' + new.error if new.error else 'reloaded'}")
         return reloaded
 
     def _resolve(self, target: str):
-        """'post.decay' | '<effect name>.<param>' | '<layer index>:<param>' -> (dict, key)"""
+        """'post.<key>' | '<layer index>:<param>' -> (dict, key)"""
         if target.startswith("post."):
             return self.post, target[5:]
-        if ":" in target and target.split(":", 1)[0].isdigit():
-            i, p = target.split(":", 1)
-            i = int(i)
-            return (self.layers[i].values, p) if i < len(self.layers) else (None, None)
-        name, _, p = target.partition(".")
-        for e in self.layers:
-            if e.name == name or getattr(e, "key", None) == name:
-                return e.values, p
-        return None, None
+        i, _, p = target.partition(":")
+        i = int(i) if i.isdigit() else len(self.layers)
+        return (self.layers[i].values, p) if i < len(self.layers) else (None, None)
 
     def render(self, t: float, dt: float, sball: ScreenBall, audio, events: set, blackout: float, flip) -> moderngl.Texture:
         pl = self.pipeline
@@ -258,16 +328,18 @@ class Scene:
             d, k = self._resolve(b.target)
             if d is not None and k in d:
                 d[k] = b.step(dt, sball, audio)
-        for e in self.layers:  # point inputs follow the ball
+        bound = {b.target for b in self.bindings}
+        for i, e in enumerate(self.layers):  # point inputs follow the ball
             for k, p in e.params.items():
-                if p.kind == "point" and not any(b.target.endswith(":" + k) for b in self.bindings):
+                if p.kind == "point" and f"{i}:{k}" not in bound:
                     e.values[k] = (sball.u, sball.v)
         f = Frame(t=t, dt=dt, aspect=pl.aspect, size=pl.size, ball=sball, audio=audio, events=events,
                   palette=self.palette, pipeline=pl, gl=self.gl)
-        for e in self.layers:
+        live = [e for e in self.layers if e.enabled]
+        for e in live:
             e.update(f)
         pl.begin_layer()
-        for e in self.layers:
+        for e in live:
             pl.bind(bool(e.values.get("feedback", False)))
             e.draw(f)   # shader effects render to their own targets, then add themselves
         center = (sball.u, sball.v) if sball.visible > 0.2 else pl.kaleido_center
@@ -291,11 +363,15 @@ def _in_output_context(method):
 
 
 class SceneManager:
+    """The scene library (self.presets: one spec per scene, in key order) and the running
+    scene(s). Edits to the current scene are written back to its spec when it is synced:
+    on switching away, on saving, and before every library change."""
+
     def __init__(self, gl: GL, size: tuple[int, int], presets: list[dict] | None = None):
         self.gl = gl
         self.gl_current = contextlib.nullcontext   # the app makes the output context current
         self.size = size
-        self.presets = copy.deepcopy(presets or PRESETS)
+        self.presets = copy.deepcopy(presets or [{**p, "preset": p["name"]} for p in PRESETS])
         self.shader_index = discover()
         self.current: Scene | None = None
         self.previous: Scene | None = None
@@ -317,12 +393,23 @@ class SceneManager:
     def names(self) -> list[str]:
         return [p["name"] for p in self.presets]
 
+    @property
+    def index(self) -> int:
+        return self.names.index(self.current.name)
+
+    def sync(self) -> None:
+        """Write the current scene's live state (edits included) back to the library."""
+        if self.current and self.current.name in self.names:
+            self.presets[self.index] = self.current.to_spec()
+
     @_in_output_context
-    def select(self, index_or_name, immediate: bool = False) -> None:
+    def select(self, index_or_name, immediate: bool = False, keep_edits: bool = True) -> None:
         idx = index_or_name if isinstance(index_or_name, int) else self.names.index(index_or_name)
         idx = max(0, min(idx, len(self.presets) - 1))
         if self.current and self.current.name == self.presets[idx]["name"] and not immediate:
             return
+        if keep_edits:
+            self.sync()
         new = Scene(self.gl, self.presets[idx], self.size, self.shader_index)
         self.messages += new.errors
         if self.previous:
@@ -333,22 +420,90 @@ class SceneManager:
         self.current = new
         self.fade = 1.0 if immediate else 0.0
 
+    # ------------------------------------------------------------------ library
+    def new_scene(self, copy_current: bool = False) -> None:
+        """A new scene after the current one, blank or a copy of it, and switch to it."""
+        from . import library
+        self.sync()
+        base = self.current.to_spec() if copy_current else library.blank("New scene")
+        base.pop("preset", None)
+        base["name"] = library.unique_name(f"{self.current.name} copy" if copy_current else "New scene", self.names)
+        self.presets.insert(self.index + 1, base)
+        self.select(base["name"])
+
+    def rename(self, name: str) -> bool:
+        name = name.strip()
+        if not name or name in self.names:
+            return name == self.current.name
+        self.presets[self.index]["name"] = name
+        self.current.name = name
+        return True
+
+    def delete(self) -> bool:
+        """Remove the current scene from the library and crossfade to its neighbour."""
+        if len(self.presets) < 2:
+            return False
+        i = self.index
+        del self.presets[i]
+        self.select(min(i, len(self.presets) - 1), keep_edits=False)
+        return True
+
+    def move(self, delta: int) -> None:
+        """Move the current scene earlier or later in the list (and on the number keys)."""
+        i = self.index
+        j = max(0, min(i + delta, len(self.presets) - 1))
+        self.sync()
+        self.presets.insert(j, self.presets.pop(i))
+
+    def preset_of_current(self) -> str | None:
+        return self.presets[self.index].get("preset")
+
+    def reset_to_preset(self) -> None:
+        from . import library
+        name = self.preset_of_current()
+        spec = library.preset(name) if name else None
+        if spec is None:
+            return
+        spec.update(name=self.current.name, preset=name)
+        self.presets[self.index] = spec
+        self.select(self.index, immediate=True, keep_edits=False)
+
+    # ------------------------------------------------------------------ layers of the current scene
     @_in_output_context
     def add_layer(self, key: str) -> bool:
-        ok = self.current.add_layer(key, self.shader_index)
-        self.messages += self.current.errors[-1:] if not ok else []
-        self._keep_layers()
-        return ok
+        if key not in BUILTIN and key not in self.shader_index:
+            self.messages.append(f"{key}: no such effect")
+            return False
+        self.current.edit_layers(lambda ls: ls.append({"effect": key}))
+        self.messages += self.current.errors
+        self.sync()
+        return not isinstance(self.current.layers[-1], Missing)
 
     @_in_output_context
     def remove_layer(self, i: int) -> None:
-        self.current.remove_layer(i)
-        self._keep_layers()
+        self.current.edit_layers(lambda ls: ls.pop(i))
+        self.sync()
 
-    def _keep_layers(self):
-        """Edits stay with the preset, so selecting the scene again rebuilds it as edited."""
-        idx = self.names.index(self.current.name)
-        self.presets[idx]["layers"] = copy.deepcopy(self.current.spec["layers"])
+    @_in_output_context
+    def move_layer(self, i: int, delta: int) -> None:
+        """delta +1: one step towards the top (drawn later)."""
+        j = i + delta
+        if 0 <= j < len(self.current.layers):
+            self.current.edit_layers(lambda ls: ls.insert(j, ls.pop(i)))
+            self.sync()
+
+    @_in_output_context
+    def duplicate_layer(self, i: int) -> None:
+        self.current.edit_layers(lambda ls: ls.insert(i + 1, copy.deepcopy(ls[i])))
+        self.sync()
+
+    @_in_output_context
+    def reset_layer(self, i: int) -> None:
+        """Default values and no bindings; on/off stays."""
+        def change(ls):
+            ls[i] = {k: v for k, v in ls[i].items() if k in ("effect", "enabled")}
+        self.current.edit_layers(change)
+        self.sync()
 
     @_in_output_context
     def resize(self, size: tuple[int, int]) -> None:

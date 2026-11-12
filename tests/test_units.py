@@ -113,3 +113,19 @@ def test_guide_renders_in_help_tab():
     text = " ".join(str(b) for b in blocks)
     assert "**" not in text and "](" not in text
     assert all(t in text for t in TABS)
+
+
+def test_scene_library_file(tmp_path, monkeypatch):
+    from sfere import library
+    monkeypatch.setattr(settings, "PATH", tmp_path / "settings.toml")
+    # first start after the upgrade: legacy layer edits from settings.toml are carried over
+    legacy = {"scene_layers": {"Rave": [{"effect": "orb"}]}}
+    specs = library.load(legacy)
+    rave = next(s for s in specs if s["name"] == "Rave")
+    assert rave["layers"] == [{"effect": "orb"}] and rave["preset"] == "Rave"
+    specs.append(library.blank(library.unique_name("Rave", [s["name"] for s in specs])))
+    library.save(specs)
+    assert library.load({}) == specs and specs[-1]["name"] == "Rave 2"
+    library.path().write_text("{ not json")
+    assert [s["name"] for s in library.load({})][0] == "Rave"       # broken file: defaults, file kept aside
+    assert (tmp_path / "scenes.json.broken").exists()

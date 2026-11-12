@@ -242,3 +242,80 @@ def test_unsupported_features_reported(gl, tmp_path):
     (tmp_path / "x.glsl").write_text("uniform samplerCube cube;\nvoid mainImage(out vec4 c, in vec2 p) { c = vec4(1.0); }\n")
     eff = ShadertoyEffect(gl, tmp_path / "x.glsl")
     assert "cubemap channels" in eff.unsupported
+
+
+def test_scene_edits_survive_switching_and_round_trip(gl):
+    mgr = SceneManager(gl, (320, 180))
+    mgr.select("Museum", immediate=True)
+    s = mgr.current
+    # the preset's 'orb.brightness' binding is tied to the orb layer by index
+    orb = next(i for i, e in enumerate(s.layers) if e.name == "orb")
+    assert s.binding(f"{orb}:brightness") is not None
+    s.layers[orb].values["size"] = 2.25
+    s.layers[0].enabled = False
+    s.post["bloom"] = 1.7
+    s.palette[0] = (1.0, 0.0, 0.0)
+    s.set_binding("post.zoom", "audio.bass", 1.0, 1.01, 0.2)
+    mgr.select("Rave", immediate=True)
+    mgr.select("Museum", immediate=True)
+    s = mgr.current
+    assert s.layers[orb].values["size"] == 2.25 and not s.layers[0].enabled
+    assert s.post["bloom"] == 1.7 and mgr.presets[mgr.index]["palette"][0] == "#ff0000"
+    assert s.binding("post.zoom").source == "audio.bass" and s.binding(f"{orb}:brightness")
+    spec = s.to_spec()
+    assert "zoom" not in spec["post"] and spec["bind"]["post.zoom"][0] == "audio.bass"
+    assert "brightness" not in spec["layers"][orb].get("values", {})    # bound: the binding drives it
+    import json
+    assert json.loads(json.dumps(spec)) == spec
+
+
+def test_layer_tools_keep_bindings_with_their_layer(gl):
+    mgr = SceneManager(gl, (320, 180))
+    mgr.select("Neon Shaders", immediate=True)
+    keys = lambda: [getattr(e, "key", e.name) for e in mgr.current.layers]
+    bound = lambda: {getattr(mgr.current.layers[int(b.target.split(":")[0])], "key", None): b.source
+                     for b in mgr.current.bindings if not b.target.startswith("post.")}
+    before = bound()
+    mgr.move_layer(1, 1)                 # plasma orb one step up
+    assert keys()[2] == "shadertoy:plasma_orb" and bound() == before
+    mgr.duplicate_layer(0)
+    assert keys()[:2] == ["isf:hex_glow", "isf:hex_glow"]
+    i = keys().index("isf:radial_burst")
+    mgr.reset_layer(i)
+    assert "isf:radial_burst" not in bound()
+    mgr.current.layers[0].enabled = False
+    out = mgr.render(0.1, 1 / 60, ball_at(0.1), audio_at(0.1))
+    assert np.isfinite(read(out)).all()
+    mgr.remove_layer(0)
+    assert keys()[0] == "isf:hex_glow" and mgr.current.layers[0].enabled
+
+
+def test_missing_effect_keeps_its_layer(gl):
+    from sfere import scenes
+    spec = {"name": "t", "layers": [{"effect": "isf:gone", "values": {"x": 1}, "bind": {"x": ["audio.sub", 0, 1]}},
+                                    {"effect": "orb"}]}
+    s = scenes.Scene(gl, spec, SIZE, {})
+    assert isinstance(s.layers[0], scenes.Missing) and s.errors
+    assert s.to_spec()["layers"][0] == spec["layers"][0]
+    s.release()
+
+
+def test_scene_library_tools(gl):
+    mgr = SceneManager(gl, (320, 180))
+    n = len(mgr.names)
+    mgr.select("Cosmic", immediate=True)
+    mgr.new_scene(copy_current=True)
+    assert mgr.current.name == "Cosmic copy" and mgr.names.index("Cosmic copy") == mgr.names.index("Cosmic") + 1
+    assert "preset" not in mgr.presets[mgr.index]
+    assert not mgr.rename("Rave") and mgr.rename("Galaxy") and mgr.current.name == "Galaxy"
+    mgr.move(-1)
+    assert mgr.names.index("Galaxy") < mgr.names.index("Cosmic")
+    mgr.new_scene()
+    assert mgr.current.name == "New scene" and len(mgr.names) == n + 2
+    assert mgr.delete() and "New scene" not in mgr.names
+    mgr.select("Rave", immediate=True)
+    mgr.remove_layer(0)
+    mgr.reset_to_preset()
+    assert len(mgr.current.layers) == len(PRESETS[0]["layers"]) and mgr.preset_of_current() == "Rave"
+    for t in range(3):
+        mgr.render(t / 60, 1 / 60, ball_at(t / 60), audio_at(t / 60))

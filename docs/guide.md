@@ -28,7 +28,7 @@ Two windows open:
 - **sfere — output**: the visuals. If an external display is connected, it goes fullscreen there by default.
 - **sfere — control**: everything you adjust during setup and the show.
 
-sfere remembers your calibration, audio sources, scene edits and output settings in `~/.config/sfere/settings.toml` and restores them at the next start.
+sfere remembers your calibration, audio sources and output settings in `~/.config/sfere/settings.toml`, and your scenes in `~/.config/sfere/scenes.json`, and restores them at the next start.
 
 ## The control window
 
@@ -37,7 +37,7 @@ The top of the control window is always visible:
 - **Status line**: frame rate, the current scene, whether the ball is found, and the tempo. The yellow bar flashes on every beat.
 - **Output preview**: exactly what the output window shows.
 - **Show buttons**: Fullscreen, Black out, Freeze, Tap tempo and Mirror. Each button lists its keyboard shortcut. A highlighted button means that mode is on.
-- **Scene buttons**: one per scene. Tap or click one to crossfade to it.
+- **Scene**: a dropdown of every scene. Pick one to crossfade to it. The number in front is its key.
 - **Messages**: shader errors and other warnings, in orange.
 
 Below that, six tabs hold the settings: Camera, Audio, Scenes, Output, Debug and Help.
@@ -90,22 +90,51 @@ A scene is a stack of effect layers plus post-processing. sfere comes with seven
 | 6 Neon Shaders | Downloaded-style shaders: hexagons, a plasma orb, a radial burst |
 | 7 Ink Tunnel | A tunnel and multipass ink trails |
 
-Switch scenes with the scene buttons at the top or the keys 1 to 9. **Crossfade** sets how long the change takes.
+Switch scenes with the **Scene** dropdown at the top, or the keys 1 to 9 for the first nine scenes. The Scenes tab edits the current scene. Every change is kept: switch away and back, or restart sfere, and the scene is as you left it.
 
-The Scenes tab edits the current scene:
+### Managing scenes
 
-- **Post** controls the whole image:
+- **New**: a new scene with a simple backdrop and the orb, placed after the current one.
+- **Duplicate**: a copy of the current scene, to try changes without losing the original.
+- **Rename**: type a new name, then **Save name**. Names must be unique.
+- **Move earlier, Move later**: change the order of the dropdown, and which number key picks the scene.
+- **Reset to preset**: puts a built-in scene back the way sfere ships it. Duplicates and new scenes don't have it.
+- **Delete**: removes the scene after you confirm. It can't be undone. The last scene can't be deleted.
+
+### The look
+
+- **Crossfade**: how long a change of scene takes.
+- **Palette**: four colors the effects take their colors from. Tap a swatch to change it.
+- **Post** settings control the whole image:
   - **decay**: how long trails linger;
   - **bloom**: glow around bright areas;
   - **exposure**: overall brightness;
   - **zoom, rotate**: make the feedback trails drift;
   - **kaleido**: kaleidoscope mirrors, folded around the ball.
-- Each **layer** opens to show its settings. A setting marked "← bound" follows the music or the ball automatically.
-- **Remove layer** deletes a layer from the scene.
-- **Add a layer** lists every built-in effect and shader (over 200). Type in **Search** to filter, then tap or click one to add it on top. Filter shaders, like blurs and color effects, process the layers below them.
-- **Reset layers to the preset** appears once you have edited a scene, and undoes the edits.
 
-Edited scenes are saved when sfere exits.
+### Layers
+
+A scene is a stack of layers. The list shows the top layer first. Filter shaders, like blurs and color effects, process the layers below them. Open a layer to see its settings and tools:
+
+- **On**: turn the layer off without removing it.
+- **Up, Down**: move it in the stack.
+- **Duplicate**: add a copy just above it.
+- **Reset**: default settings and no bindings.
+- **Remove**: delete the layer.
+
+If a layer's shader file is missing, the layer says so and keeps its settings. It works again once the file is back.
+
+**Add a layer** lists every built-in effect and shader (over 200). Type in **Search** to filter, then tap or click one to add it on top.
+
+### Making settings follow the music
+
+The **♪** button in front of a setting makes it follow the music or the ball's movement. Choose what drives it:
+
+- **Sub-bass, Bass, Mids, Highs, Loudness**: the energy in the music;
+- **Beat pulse**: a flash on every beat; **Beat phase**: a ramp through each beat;
+- **Ball speed, Ball acceleration, Ball curve**: how the ball moves.
+
+Then set the value **When quiet / still** and **When loud / fast**. sfere moves the setting between the two. **Smoothing** slows the changes down: 0 follows instantly, higher values glide. A highlighted ♪ means the setting is following something; choose **Nothing** to set it by hand again.
 
 ## 4. Output: the projector
 
@@ -124,8 +153,8 @@ Edited scenes are saved when sfere exits.
 sfere notices a connected touch screen and switches the control window to touch mode:
 
 - Every button, slider, checkbox and tab gets bigger and easier to hit, with a larger font.
-- Drag a finger up or down anywhere in a tab to scroll it, including over buttons and sliders. A sideways drag moves the slider under your finger instead. If a scroll starts on a slider, that slider goes back to its previous value.
-- Drag a finger up or down the **Add a layer** list to scroll it; tap an effect to add it.
+- Drag a finger up or down anywhere in a tab to scroll it, including over buttons and sliders. The scroll bar moves with your finger, as if you were dragging it. A sideways drag moves the slider under your finger instead. If a scroll starts on a slider, that slider goes back to its previous value.
+- The **Add a layer** list and the **Scene** dropdown scroll the same way; tap an item to pick it.
 - The show controls have buttons at the top of the window, so you don't need the keyboard shortcuts. The debug marker is in the Output tab.
 - In the Camera tab, tap the ball to calibrate, and drag a box to exclude a reflection.
 
