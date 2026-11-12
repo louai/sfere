@@ -654,6 +654,18 @@ class Panels:
         _, cfg["camera"] = im.checkbox("The camera, and the music as a WAV file", bool(cfg.get("camera", True)))
         if im.is_item_hovered():
             im.set_tooltip("Replay a recorded session with --video <camera file> --audio-file <WAV file>")
+        layouts = ["separate", "stacked"]
+        both = bool(cfg.get("output", True)) and bool(cfg.get("camera", True))
+        im.begin_disabled(not both)
+        cur = cfg.get("layout", "separate")
+        ch, i = im.combo("Files", layouts.index(cur) if cur in layouts else 0,
+                         ["Separate videos (the camera and the WAV replay a session)",
+                          "One video: the output on top, the camera below"])
+        if ch:
+            cfg["layout"] = layouts[i]
+        im.end_disabled()
+        if im.is_item_hovered(im.HoveredFlags_.allow_when_disabled):
+            im.set_tooltip("Stacking needs both the output and the camera. It is made when the recording stops.")
         heights = [720, 1080, 1440, 0]
         w, h = app.scenes.size
         labels = [f"{x}p" for x in heights[:-1]] + [f"Full render ({w}×{h})"]

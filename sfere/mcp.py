@@ -81,11 +81,13 @@ TOOLS = [
            "debug_marker": {"type": "boolean"}, "fullscreen": {"type": "string"}, "window": {"type": "boolean"},
            "tap_tempo": {"type": "boolean"}}), "show"),
     ("record", "Start or stop recording, or read its status. Recordings go to ~/Videos/sfere: the output with the "
-     "music, the camera, and the music as WAV. Settings (output, camera, height 720/1080/1440/0 for full, fps, "
+     "music, the camera, and the music as WAV, as separate files or (layout 'stacked') as one video with the output "
+     "on top and the camera below. Settings (output, camera, layout, height 720/1080/1440/0 for full, fps, "
      "folder) can change while not recording. Files are finished in the background after stop; status lists them.",
      _obj({"action": {"type": "string", "enum": ["start", "stop", "status"], "default": "status"},
            "output": {"type": "boolean"}, "camera": {"type": "boolean"}, "height": {"type": "integer"},
-           "fps": {"type": "integer"}, "folder": {"type": "string"}}), "record"),
+           "fps": {"type": "integer"}, "folder": {"type": "string"},
+           "layout": {"type": "string", "enum": ["separate", "stacked"]}}), "record"),
     ("virtual_camera", "Turn the virtual camera named 'sfere' on or off, or change its size; returns where other apps "
      "find it.", _obj({"on": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}}),
      "virtual_camera"),

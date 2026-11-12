@@ -5,6 +5,9 @@ A session writes into one folder, files named by start time:
     sfere-<stamp>-camera.mp4    the camera as the tracker saw it (mirrored like the Camera tab)
     sfere-<stamp>-audio.wav     the music sfere analysed
 The camera video and the WAV replay a session: `sfere --video ...camera.mp4 --audio-file ...audio.wav`.
+With layout "stacked", the output and the camera end up in one video instead,
+    sfere-<stamp>-stacked.mp4   the output on top, the camera below at the same width, with the music
+made from the separate videos when the recording stops (which are then removed).
 
 Video is written to Matroska while recording (it survives a crash), then remuxed to MP4 with
 the sound when the recording stops. Frames carry the wall-clock time they arrived, so a
@@ -51,9 +54,13 @@ def encoder_name() -> str:
     return "GPU (VAAPI)" if video_encoder() is VAAPI else "CPU (x264)"
 
 
-def ffmpeg_video(path: Path, size: tuple[int, int], fps: float, pix_fmt: str) -> list[str]:
+def encoder_for(size: tuple[int, int]) -> tuple[list[str], list[str]]:
     # the GPU encoder refuses very small frames
-    glob, out = video_encoder() if size[0] >= 256 and size[1] >= 128 else X264
+    return video_encoder() if size[0] >= 256 and size[1] >= 128 else X264
+
+
+def ffmpeg_video(path: Path, size: tuple[int, int], fps: float, pix_fmt: str) -> list[str]:
+    glob, out = encoder_for(size)
     return ["ffmpeg", "-v", "error", "-y", *glob,
             "-use_wallclock_as_timestamps", "1", "-f", "rawvideo", "-pix_fmt", pix_fmt, "-s", f"{size[0]}x{size[1]}",
             "-thread_queue_size", "64", "-i", "-",
@@ -86,12 +93,13 @@ class Recording:
     camera thread; both return at once."""
 
     def __init__(self, folder: Path, audio_engine, output_size: tuple[int, int] | None, fps: float,
-                 camera_size: tuple[int, int] | None, camera_fps: float):
+                 camera_size: tuple[int, int] | None, camera_fps: float, layout: str = "separate"):
         folder.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         self.base = folder / f"sfere-{stamp}"
         self.started = time.monotonic()
         self.fps = fps
+        self.layout = layout if output_size and camera_size else "separate"
         self.audio_engine = audio_engine
         self.files: list[Path] = []
         self.messages: list[str] = []
@@ -171,4 +179,31 @@ class Recording:
             self.files.append(self.wav)
         else:
             self.wav.unlink(missing_ok=True)
+        if self.layout == "stacked":
+            self._stack()
         return self.files
+
+    def _stack(self) -> None:
+        """One video: the output on top, the camera below scaled to the same width, with the
+        music. The separate files are removed only once it is written."""
+        out, cam = Path(f"{self.base}-output.mp4"), Path(f"{self.base}-camera.mp4")
+        if out not in self.files or cam not in self.files:
+            self.messages.append("Kept separate files: one of the videos is missing, so they weren't stacked.")
+            return
+        w = self.output_size[0]
+        cam_h = int(self.camera_size[1] * w / self.camera_size[0] / 2 + 0.5) * 2
+        glob, enc = encoder_for((w, self.output_size[1] + cam_h))
+        vf = enc[enc.index("-vf") + 1] if "-vf" in enc else ""
+        codec = [a for i, a in enumerate(enc) if a != "-vf" and (i == 0 or enc[i - 1] != "-vf")]
+        graph = f"[1:v]scale={w}:{cam_h}[c];[0:v][c]vstack=inputs=2:shortest=1" + (f",{vf}" if vf else "") + "[v]"
+        stacked = Path(f"{self.base}-stacked.mp4")
+        cmd = ["ffmpeg", "-v", "error", "-y", *glob, "-i", str(out), "-i", str(cam), "-filter_complex", graph,
+               "-map", "[v]", "-map", "0:a?", *codec, "-c:a", "copy", "-movflags", "+faststart", str(stacked)]
+        r = subprocess.run(cmd, capture_output=True, timeout=6 * 3600)
+        if r.returncode != 0:
+            stacked.unlink(missing_ok=True)
+            self.messages.append(f"Kept separate files: stacking failed ({r.stderr.decode(errors='replace')[-200:]})")
+            return
+        for f in (out, cam, self.wav):
+            f.unlink(missing_ok=True)
+        self.files = [f for f in self.files if f not in (out, cam, self.wav)] + [stacked]

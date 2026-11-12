@@ -51,6 +51,7 @@ DEFAULTS: dict = {
         "folder": "~/Videos/sfere",
         "output": True,       # the output, with the music
         "camera": True,       # the camera, plus the music as a WAV, to replay a session
+        "layout": "separate",  # separate files, or "stacked": output above camera in one video
         "height": 1080,       # output recording height; 0 = the render size
         "fps": 30,
     },

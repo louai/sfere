@@ -165,6 +165,7 @@ sfere --video sfere-...-camera.mp4 --audio-file sfere-...-audio.wav
 In the Output tab, under **Recording**:
 
 - choose what to record: the output, the camera, or both;
+- **Files**: separate videos (the default), or **one video** with the output on top and the camera below it at the same width, with the music. The single video is made when you stop recording, so finishing takes longer: the video is encoded again. It replaces the separate files, so use separate videos if you want to replay the session later;
 - **Output size** and **Output frame rate**: 1080p at 30 fps by default. **Full render** records every pixel sfere draws, which makes large files;
 - **Folder**: where the files go. **Open folder** shows it.
 

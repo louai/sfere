@@ -69,3 +69,34 @@ def test_short_recording_has_video_and_sound(tmp_path):
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width",
                             "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.split()
     assert "video,64" in probe and any(p.startswith("audio") for p in probe)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+@pytest.mark.parametrize("out_size,cam_size", [((64, 36), (32, 18)), ((640, 360), (1280, 720))])
+def test_stacked_recording_is_one_video(tmp_path, out_size, cam_size):
+    from sfere.outputs.recorder import Recording
+
+    class Audio:
+        sr = 48000
+        taps: list = []
+
+    audio = Audio()
+    rec = Recording(tmp_path, audio, out_size, 30.0, cam_size, 30.0, layout="stacked")
+    for i in range(20):
+        audio.taps[0](np.zeros(1600, np.float32) + 0.1)
+        rec.push_output(bytes([200]) * (out_size[0] * out_size[1] * 3))           # bright output on top
+        rec.push_camera(np.zeros((cam_size[1], cam_size[0], 3), np.uint8))        # dark camera below
+        time.sleep(1 / 30)
+    files = rec.stop()
+    assert not rec.messages, rec.messages
+    assert [f.name.split("-")[-1] for f in files] == ["stacked.mp4"]
+    assert sorted(p.name.split("-")[-1] for p in tmp_path.iterdir()) == ["stacked.mp4"]
+    w, h = out_size
+    cam_h = int(cam_size[1] * w / cam_size[0] / 2 + 0.5) * 2
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height",
+                            "-of", "csv=p=0", str(files[0])], capture_output=True, text=True).stdout.split()
+    assert f"video,{w},{h + cam_h}" in probe and any(p.startswith("audio") for p in probe)
+    frame = subprocess.run(["ffmpeg", "-v", "error", "-i", str(files[0]), "-frames:v", "1", "-f", "rawvideo",
+                            "-pix_fmt", "gray", "-"], capture_output=True).stdout
+    img = np.frombuffer(frame, np.uint8).reshape(h + cam_h, w)
+    assert img[: h // 2].mean() > 150 and img[h + cam_h // 2:].mean() < 40

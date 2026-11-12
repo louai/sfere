@@ -463,9 +463,13 @@ class Commands:
                 "fullscreen_on": app.fullscreen_monitor}
 
     def cmd_record(self, action: str = "status", output: bool | None = None, camera: bool | None = None,
-                   height: int | None = None, fps: int | None = None, folder: str | None = None):
+                   height: int | None = None, fps: int | None = None, folder: str | None = None,
+                   layout: str | None = None):
         app, cfg = self.app, self.app.settings["recording"]
-        for k, v in (("output", output), ("camera", camera), ("height", height), ("fps", fps), ("folder", folder)):
+        if layout not in (None, "separate", "stacked"):
+            raise CommandError("layout is 'separate' or 'stacked'")
+        for k, v in (("output", output), ("camera", camera), ("height", height), ("fps", fps), ("folder", folder),
+                     ("layout", layout)):
             if v is not None:
                 if app.recording:
                     raise CommandError("stop the recording before changing its settings")

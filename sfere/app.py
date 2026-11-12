@@ -299,7 +299,8 @@ class App:
             self.recording = Recording(
                 Path(cfg.get("folder") or "~/Videos/sfere").expanduser(), self.engine.audio,
                 self.record_output_size() if cfg.get("output") else None, float(cfg.get("fps", 30)),
-                (frame.shape[1], frame.shape[0]) if cam else None, float(self.settings["camera"].get("fps", 30)))
+                (frame.shape[1], frame.shape[0]) if cam else None, float(self.settings["camera"].get("fps", 30)),
+                cfg.get("layout", "separate"))
         except (OSError, RuntimeError) as e:
             self.record_log.append(f"Couldn't start recording: {e}")
             return False
