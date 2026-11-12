@@ -27,5 +27,6 @@ StartupWMClass=sfere
 EOF
 
 update-desktop-database "$data/applications" 2>/dev/null || true
-gtk-update-icon-cache -q "$data/icons/hicolor" 2>/dev/null || true
+# -t: a user hicolor folder has no index.theme, and a stale cache hides new icons
+gtk-update-icon-cache -q -f -t "$data/icons/hicolor" || echo "warning: icon cache not updated; the icon may not show" >&2
 echo "installed $data/applications/sfere.desktop -> $root"
