@@ -14,7 +14,7 @@ To add sfere to the app drawer and get a `sfere` command for the terminal, run `
 
 The first start compiles a tiny compatibility library for Dear ImGui on Wayland, so it needs a C compiler (`cc`).
 
-Two windows open. If an external display is connected, the output goes fullscreen on it (and on one plugged in later); turn this off in the Output tab.
+Two windows open: the control window on the laptop's screen, and the output in a window on the external display, if one is connected (and on one plugged in later). Press `F` to make it fullscreen there; leaving fullscreen keeps it on that display. Exact placement needs XWayland, which sfere uses when a touch screen is connected (or with `--x11`); on native Wayland, GNOME decides where windows open.
 - **control:** calibration, audio sources, scenes, output settings;
 - **output:** the visuals.
 

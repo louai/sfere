@@ -622,7 +622,7 @@ class Panels:
         if im.is_item_hovered():
             im.set_tooltip("Lower rates save GPU and power. Trails and motion look the same at any rate;\n"
                            "some downloaded shaders with feedback move slower at lower rates.")
-        _, out["start_on_external"] = im.checkbox("Go fullscreen on an external display at start and when one is plugged in",
+        _, out["start_on_external"] = im.checkbox("Open the output on an external display (at start and when one is plugged in)",
                                                   bool(out.get("start_on_external", True)))
         ch, out["render_scale"] = self._slider("Render scale", float(out.get("render_scale", 1.0)), 0.5, 1.0)
         if ch:

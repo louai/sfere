@@ -25,8 +25,8 @@ Open **sfere** from the app drawer, or run it from a terminal:
 
 Two windows open:
 
-- **sfere — output**: the visuals. If an external display is connected, it goes fullscreen there by default.
-- **sfere — control**: everything you adjust during setup and the show.
+- **sfere — output**: the visuals. If an external display is connected, the output opens there in a window. Press F (or **Fullscreen**) to fill that display, and F or Esc to go back to a window on the same display.
+- **sfere — control**: everything you adjust during setup and the show. It opens on the laptop's own screen.
 
 sfere remembers your calibration, audio sources and output settings in `~/.config/sfere/settings.toml`, and your scenes in `~/.config/sfere/scenes.json`, and restores them at the next start.
 
@@ -140,7 +140,7 @@ Then set the value **When quiet / still** and **When loud / fast**. sfere moves 
 
 - **Fullscreen on ...**: one button per display. **Back to a window** returns to a normal window.
 - **Frame rate**: match the display, or a lower rate to save power and heat.
-- **Go fullscreen on an external display at start and when one is plugged in**: on by default. Turn it off to keep the output in a window.
+- **Open the output on an external display (at start and when one is plugged in)**: on by default. sfere always starts with the output in a window; press F to make it fullscreen. Turn this off to leave the output window wherever it opens.
 - **Render scale**: renders at a fraction of the display's resolution. Lower it if the frame rate drops.
 - **Aspect**: how the camera's view maps onto the output. **fit** keeps the whole view, **fill** crops it to fill the screen, **stretch** fills it without keeping the shape.
 - **Flip horizontally**: for rear projection. **Flip vertically**: for a projector mounted upside down.
@@ -299,7 +299,7 @@ Check each shader's license before a paid performance. Most Shadertoy shaders ar
 - **Something else is tracked.** Drag an exclusion zone over it, or lower **Hue tolerance**.
 - **The tempo is wrong or never locks.** Check the meters in the Audio tab: the right source must be ticked and moving. Raise its gain if the music is quiet. Use **Tap tempo** for music without a steady kick.
 - **A microphone shows "stuck" or no signal.** It is muted or misconfigured at the system level. Check it in GNOME Settings → Sound.
-- **The output appears on the wrong display.** Press Shift+F, or use the Fullscreen buttons in the Output tab.
+- **The output appears on the wrong display.** Press Shift+F, or use the Fullscreen buttons in the Output tab. sfere can only place windows itself through XWayland, which it uses with a touch screen or `--x11`; on native Wayland, GNOME opens windows where it chooses, so drag the output window to the projector.
 - **The frame rate drops.** Lower **Render scale**, choose a lower **Frame rate**, or remove heavy shader layers.
 - **Touches do nothing.** Check **Output → Control window**: it should show "Display: XWayland". If not, set Touch-friendly controls to Automatic or On and restart sfere.
 - **A shader shows an error.** The message names the line. Fix the file and save it; sfere reloads it at once.

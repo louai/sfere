@@ -38,7 +38,7 @@ DEFAULTS: dict = {
     "output": {
         "mode": "window",     # window | fullscreen | borderless
         "monitor": "",
-        "start_on_external": True,   # fullscreen on an external display at start and on hot-plug
+        "start_on_external": True,   # output window on an external display at start and on hot-plug
         "render_width": 1920,
         "render_height": 1080,
         "render_scale": 1.0,

@@ -66,9 +66,13 @@ class App:
         glfw.window_hint_string(glfw.WAYLAND_APP_ID, "sfere")
         glfw.window_hint_string(glfw.X11_CLASS_NAME, "sfere")
         glfw.window_hint_string(glfw.X11_INSTANCE_NAME, "sfere")
+        if self.x11:    # the output opens on the external display (XWayland honours positions)
+            self._position_hint(self._initial_output_monitor(), (1280, 720))
         self.out_win = glfw.create_window(1280, 720, "sfere — output", None, None)
         if not self.out_win:
             raise SystemExit("Could not open the output window")
+        if self.x11 and self.internal_monitor():
+            self._position_hint(self.internal_monitor(), (1180, 860))
         self.ctl_win = glfw.create_window(1180, 860, "sfere — control", None, self.out_win)
         glfw.make_context_current(self.out_win)
         self.ctx = attach_current_context()
@@ -99,6 +103,7 @@ class App:
         self.debug = False
         self.freeze = False
         self.windowed_size = (1280, 720)
+        self._frame = (0, 0, 0, 0)     # the output window's frame, measured before fullscreen
         self.last_tex = None
         self.taps: list[float] = []
         self._ui_shot = None
@@ -111,15 +116,9 @@ class App:
         from . import ui
         self.panels = ui.Panels(self)
         self._monitors_changed = False
+        self._known_monitors = [self.monitor_name(m) for m in self.monitors()]
         glfw.set_monitor_callback(lambda m, event: setattr(self, "_monitors_changed", True))
-        # Applied once the window is on screen: asked for earlier, GNOME puts it fullscreen
-        # on the display it first appeared on, whatever monitor was requested.
-        names = [self.monitor_name(m) for m in self.monitors()]
-        self._start_fullscreen = None
-        if out.get("mode") == "fullscreen" and out.get("monitor") in names:
-            self._start_fullscreen = out["monitor"]
-        elif out.get("start_on_external", True) and self.external_monitors():
-            self._start_fullscreen = self.preferred_monitor()
+        out["mode"] = "window"          # sfere always starts windowed; F goes fullscreen
         self._frame_count = 0
         self.recording = None           # outputs.recorder.Recording while recording
         self.finishing: list[threading.Thread] = []   # recordings being written out
@@ -158,12 +157,71 @@ class App:
         mode = self.glfw.get_video_mode(m)
         return f"{self.monitor_name(m)}  {mode.size.width}×{mode.size.height} @{mode.refresh_rate} Hz"
 
+    def monitor_by_name(self, name: str | None):
+        return next((m for m in self.monitors() if self.monitor_name(m) == name), None)
+
+    def internal_monitor(self) -> str | None:
+        """The laptop's built-in panel, if there is one."""
+        return next((n for n in map(self.monitor_name, self.monitors()) if n.startswith(("eDP", "LVDS", "DSI"))), None)
+
+    def _initial_output_monitor(self) -> str | None:
+        out = self.settings["output"]
+        if out.get("start_on_external", True) and self.external_monitors():
+            return self.preferred_monitor()
+        return None
+
+    def _centered(self, name: str | None, size: tuple[int, int]) -> tuple[int, int, int, int] | None:
+        """(x, y, w, h) centering a window of `size` in a display's usable area, shrunk to fit."""
+        mon = self.monitor_by_name(name)
+        if mon is None:
+            return None
+        mx, my, mw, mh = self.glfw.get_monitor_workarea(mon)
+        w, h = min(size[0], int(mw * 0.95)), min(size[1], int(mh * 0.95))
+        return mx + (mw - w) // 2, my + (mh - h) // 2, w, h
+
+    def _position_hint(self, name: str | None, logical_size: tuple[int, int]) -> None:
+        """Where the next window created opens (X11 only; Wayland's compositor decides)."""
+        mon = self.monitor_by_name(name)
+        if mon is None:
+            return
+        sc = self.glfw.get_monitor_content_scale(mon)[0]     # SCALE_TO_MONITOR grows the window
+        rect = self._centered(name, (int(logical_size[0] * sc), int(logical_size[1] * sc)))
+        self.glfw.window_hint(self.glfw.POSITION_X, rect[0])
+        self.glfw.window_hint(self.glfw.POSITION_Y, rect[1])
+
+    def place_window(self, win, name: str | None) -> bool:
+        """Move a window (not fullscreen) to the middle of a display. Works through XWayland;
+        on Wayland the compositor places windows itself, so this does nothing there."""
+        if not self.x11:
+            return False
+        rect = self._centered(name, tuple(self.glfw.get_window_size(win)))
+        if rect is None:
+            return False
+        self.glfw.set_window_pos(win, rect[0], rect[1])
+        return True
+
+    def _place_at_start(self) -> None:
+        """Control window on the laptop's panel, output (windowed) on the external display.
+        Done once both are on screen: GNOME first opens the second window next to the first."""
+        internal, external = self.internal_monitor(), self._initial_output_monitor()
+        if external:
+            self.place_window(self.out_win, external)
+            if internal and internal != external:
+                self.place_window(self.ctl_win, internal)
+
     def set_fullscreen(self, name: str | None) -> None:
         glfw = self.glfw
         if name is None:
             if self.fullscreen_monitor is not None:
-                w, h = self.windowed_size
-                glfw.set_window_monitor(self.out_win, None, 100, 100, w, h, 0)
+                # back to a window on the same display (or the preferred one if it's gone)
+                where = self.fullscreen_monitor if self.monitor_by_name(self.fullscreen_monitor) \
+                    else self.preferred_monitor()
+                # GNOME takes this size as including the window's frame (title bar), so each
+                # round trip would shrink the window by it: ask for the frame on top
+                l, t, r, b = self._frame
+                w, h = self.windowed_size[0] + l + r, self.windowed_size[1] + t + b
+                rect = self._centered(where, (w, h)) or (100, 100, w, h)
+                glfw.set_window_monitor(self.out_win, None, *rect, 0)
             self.fullscreen_monitor = None
             self.settings["output"]["mode"] = "window"
             return
@@ -172,6 +230,7 @@ class App:
             return
         if self.fullscreen_monitor is None:
             self.windowed_size = tuple(glfw.get_window_size(self.out_win))
+            self._frame = tuple(glfw.get_window_frame_size(self.out_win)) if self.x11 else (0, 0, 0, 0)
         mode = glfw.get_video_mode(mon)
         glfw.set_window_monitor(self.out_win, mon, 0, 0, mode.size.width, mode.size.height, mode.refresh_rate)
         self.fullscreen_monitor = name
@@ -192,15 +251,16 @@ class App:
         return want if want in pool else (pool[0] if pool else None)
 
     def _handle_monitor_change(self) -> None:
-        """Hot-plug: a newly connected external display takes the output; if the display the
-        output was fullscreen on goes away, fall back to a window."""
+        """Hot-plug: a newly connected external display takes the output window; if the display
+        the output was fullscreen on goes away, fall back to a window."""
         self._monitors_changed = False
         names = [self.monitor_name(m) for m in self.monitors()]
         if self.fullscreen_monitor and self.fullscreen_monitor not in names:
             self.set_fullscreen(None)
-        if not self.fullscreen_monitor and self.settings["output"].get("start_on_external", True) \
-                and self.external_monitors():
-            self.set_fullscreen(self.preferred_monitor())
+        new = [n for n in self.external_monitors() if n not in self._known_monitors]
+        self._known_monitors = names
+        if new and not self.fullscreen_monitor and self.settings["output"].get("start_on_external", True):
+            self.place_window(self.out_win, self.preferred_monitor())
 
     def next_monitor(self) -> None:
         mons = [self.monitor_name(m) for m in self.monitors()]
@@ -455,8 +515,8 @@ class App:
         if self._monitors_changed:
             self._handle_monitor_change()
         self._frame_count += 1
-        if self._start_fullscreen and self._frame_count == 3:
-            self.set_fullscreen(self._start_fullscreen)
+        if self._frame_count == 3:
+            self._place_at_start()
         now = time.monotonic()
         dt = min(0.1, max(1e-4, now - self._last))
         self._last = now
