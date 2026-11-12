@@ -10,14 +10,17 @@ With layout "stacked", the output and the camera end up in one video instead,
 made from the separate videos when the recording stops (which are then removed).
 
 Video is written to Matroska while recording (it survives a crash), then remuxed to MP4 with
-the sound when the recording stops. Frames carry the wall-clock time they arrived, so a
+the sound when the recording stops, by a separate process (outputs/finish.py) that quitting
+sfere doesn't wait for. Frames carry the wall-clock time they arrived, so a
 dropped or late frame doesn't shift the rest.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -103,6 +106,8 @@ class Recording:
         self.audio_engine = audio_engine
         self.files: list[Path] = []
         self.messages: list[str] = []
+        self.launched = threading.Event()   # the finishing process has started (see stop)
+        self.finisher = None
         self.wav = Path(f"{self.base}-audio.wav")
         self.audio = AudioTap(self.wav, audio_engine.sr)
         audio_engine.taps.append(self.audio)
@@ -144,66 +149,45 @@ class Recording:
                 parts.append(f"{pipe.name.split(':')[1]}: {state}")
         return "   ".join(parts)
 
-    def stop(self) -> list[Path]:
-        """Finish the files (this takes a moment: encoders flush, the MP4s get their sound)."""
+    def stop(self, wait: bool = True) -> list[Path]:
+        """Flush the encoders (a moment), then hand the rest (adding the sound, stacking) to a
+        separate process that outlives sfere. `launched` is set once it runs; with wait, the
+        result comes back here."""
         try:
             self.audio_engine.taps.remove(self.audio)
         except ValueError:
             pass
         self.audio.close()
+        job = {"base": str(self.base), "layout": self.layout, "audio_frames": self.audio.frames, "videos": [],
+               "files": [], "messages": [], "app_pid": os.getpid(),
+               "output_size": getattr(self, "output_size", None), "camera_size": getattr(self, "camera_size", None)}
         for pipe, kind in ((self.output, "output"), (self.camera, "camera")):
             if pipe is None:
                 continue
             code = pipe.close()
             mkv = Path(f"{self.base}-{kind}.mkv")
-            mp4 = Path(f"{self.base}-{kind}.mp4")
-            if code != 0 or not mkv.exists():
-                self.messages.append(f"{kind} recording failed: {pipe.error or pipe.last_log() or code}")
-                if mkv.exists():
-                    self.files.append(mkv)
-                continue
-            # output: video + the music; camera: video only (the WAV replays alongside it)
-            audio_in = ["-i", str(self.wav), "-c:a", "aac", "-b:a", "192k", "-shortest"] if kind == "output" else []
-            cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(mkv), *audio_in[:2],
-                   "-map", "0:v", *(["-map", "1:a"] if audio_in else []), "-c:v", "copy", *audio_in[2:],
-                   "-movflags", "+faststart", str(mp4)]
-            r = subprocess.run(cmd, capture_output=True, timeout=600)
-            if r.returncode == 0:
-                mkv.unlink()
-                self.files.append(mp4)
+            if code == 0 and mkv.exists():
+                job["videos"].append(kind)
             else:
-                self.messages.append(f"{kind}: couldn't add the sound ({r.stderr.decode(errors='replace')[-200:]}); "
-                                     f"kept {mkv.name}")
-                self.files.append(mkv)
-        if self.audio.frames:
-            self.files.append(self.wav)
-        else:
-            self.wav.unlink(missing_ok=True)
-        if self.layout == "stacked":
-            self._stack()
+                job["messages"].append(f"{kind} recording failed: {pipe.error or pipe.last_log() or code}")
+                if mkv.exists():
+                    job["files"].append(str(mkv))
+        package = Path(__file__).resolve().parents[2]
+        self.finisher = subprocess.Popen(
+            [sys.executable, "-P", "-m", "sfere.outputs.finish"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, start_new_session=True,    # survives sfere quitting (or being killed)
+            env={**os.environ, "PYTHONPATH": str(package)})
+        self.finisher.stdin.write(json.dumps(job).encode())
+        self.finisher.stdin.close()
+        self.launched.set()
+        if not wait:
+            return []
+        out = self.finisher.stdout.read()
+        self.finisher.wait()
+        try:
+            result = json.loads(out.decode() or "{}")
+        except ValueError:
+            result = {}
+        self.files = [Path(f) for f in result.get("files", [])]
+        self.messages += result.get("messages", []) or ([] if result else ["finishing the recording failed"])
         return self.files
-
-    def _stack(self) -> None:
-        """One video: the output on top, the camera below scaled to the same width, with the
-        music. The separate files are removed only once it is written."""
-        out, cam = Path(f"{self.base}-output.mp4"), Path(f"{self.base}-camera.mp4")
-        if out not in self.files or cam not in self.files:
-            self.messages.append("Kept separate files: one of the videos is missing, so they weren't stacked.")
-            return
-        w = self.output_size[0]
-        cam_h = int(self.camera_size[1] * w / self.camera_size[0] / 2 + 0.5) * 2
-        glob, enc = encoder_for((w, self.output_size[1] + cam_h))
-        vf = enc[enc.index("-vf") + 1] if "-vf" in enc else ""
-        codec = [a for i, a in enumerate(enc) if a != "-vf" and (i == 0 or enc[i - 1] != "-vf")]
-        graph = f"[1:v]scale={w}:{cam_h}[c];[0:v][c]vstack=inputs=2:shortest=1" + (f",{vf}" if vf else "") + "[v]"
-        stacked = Path(f"{self.base}-stacked.mp4")
-        cmd = ["ffmpeg", "-v", "error", "-y", *glob, "-i", str(out), "-i", str(cam), "-filter_complex", graph,
-               "-map", "[v]", "-map", "0:a?", *codec, "-c:a", "copy", "-movflags", "+faststart", str(stacked)]
-        r = subprocess.run(cmd, capture_output=True, timeout=6 * 3600)
-        if r.returncode != 0:
-            stacked.unlink(missing_ok=True)
-            self.messages.append(f"Kept separate files: stacking failed ({r.stderr.decode(errors='replace')[-200:]})")
-            return
-        for f in (out, cam, self.wav):
-            f.unlink(missing_ok=True)
-        self.files = [f for f in self.files if f not in (out, cam, self.wav)] + [stacked]

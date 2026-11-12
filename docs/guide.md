@@ -169,7 +169,7 @@ In the Output tab, under **Recording**:
 - **Output size** and **Output frame rate**: 1080p at 30 fps by default. **Full render** records every pixel sfere draws, which makes large files;
 - **Folder**: where the files go. **Open folder** shows it.
 
-Recording uses the graphics chip to encode video when it can, so the show doesn't slow down. If the computer can't keep up, a recording skips frames rather than slowing the output; the status line counts them. Finishing a recording takes a moment after you stop it, while the sound is added.
+Recording uses the graphics chip to encode video when it can, so the show doesn't slow down. If the computer can't keep up, a recording skips frames rather than slowing the output; the status line counts them. Finishing a recording takes a moment after you stop it, while the sound is added. This happens in the background: you can keep performing, or quit sfere straight away. If sfere has already quit when the files are ready, a desktop notification says where they are.
 
 ### Virtual camera
 

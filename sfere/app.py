@@ -377,7 +377,9 @@ class App:
         def finish():
             files = rec.stop()
             self.record_log += rec.messages + [f"Saved {f}" for f in files]
-        t = threading.Thread(target=finish, name="record:finish", daemon=False)
+        # daemon: quitting doesn't wait for this; the finishing process carries on by itself
+        t = threading.Thread(target=finish, name="record:finish", daemon=True)
+        t.recording = rec
         t.start()
         self.finishing.append(t)
 
@@ -571,6 +573,11 @@ class App:
                     f"scene={self.scenes.current.name} fullscreen={self.fullscreen_monitor}\n")
 
     def close(self):
+        # Gone from the screen at once: what follows (encoders flushing, the camera restored)
+        # can take a few seconds, and a window that stops answering looks like a crash.
+        for win in (self.out_win, self.ctl_win):
+            self.glfw.hide_window(win)
+        self.glfw.poll_events()
         try:
             s = self.settings
             cfg = self.engine.tracker.config
@@ -592,8 +599,9 @@ class App:
         finally:
             self.control.close()
             self.stop_recording()
+            # wait only until each recording's finishing process runs; it completes on its own
             for t in self.finishing:
-                t.join()
+                t.recording.launched.wait(60)
             if self.vcam:
                 self.vcam.close()
             self.engine.close()
