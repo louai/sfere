@@ -130,6 +130,16 @@ class App:
         self.fullscreen_monitor = name
         self.settings["output"].update(mode="fullscreen", monitor=name)
 
+    def preferred_monitor(self) -> str | None:
+        """Where F goes fullscreen: an external display (projector) whenever one is connected,
+        the saved one if there are several; the built-in panel only when it's the only screen.
+        GLFW's monitor order is the compositor's, so it says nothing about which is external."""
+        names = [self.monitor_name(m) for m in self.monitors()]
+        external = [n for n in names if not n.startswith(("eDP", "LVDS", "DSI"))]
+        want = self.settings["output"].get("monitor")
+        pool = external or names
+        return want if want in pool else (pool[0] if pool else None)
+
     def next_monitor(self) -> None:
         mons = [self.monitor_name(m) for m in self.monitors()]
         if not mons:
@@ -164,10 +174,7 @@ class App:
             if self.fullscreen_monitor:
                 self.set_fullscreen(None)
             else:
-                mon = g.get_window_monitor(self.out_win)
-                names = [self.monitor_name(m) for m in self.monitors()]
-                want = self.settings["output"].get("monitor")
-                self.set_fullscreen(want if want in names else (names[-1] if names else None))
+                self.set_fullscreen(self.preferred_monitor())
         elif key == g.KEY_ESCAPE and self.fullscreen_monitor:
             self.set_fullscreen(None)
         elif key == g.KEY_Q and mods & g.MOD_CONTROL:
