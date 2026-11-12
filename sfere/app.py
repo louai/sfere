@@ -50,6 +50,9 @@ class App:
                         (glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE), (glfw.OPENGL_FORWARD_COMPAT, True)):
             glfw.window_hint(hint, v)
         glfw.window_hint(glfw.SCALE_TO_MONITOR, True)
+        # GLFW minimizes a fullscreen window when it loses focus, so clicking the control
+        # window would hide the show
+        glfw.window_hint(glfw.AUTO_ICONIFY, False)
         # matches sfere.desktop, so the shell groups both windows under the app's icon
         glfw.window_hint_string(glfw.WAYLAND_APP_ID, "sfere")
         glfw.window_hint_string(glfw.X11_CLASS_NAME, "sfere")
