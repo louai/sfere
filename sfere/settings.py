@@ -42,6 +42,7 @@ DEFAULTS: dict = {
         "render_width": 1920,
         "render_height": 1080,
         "render_scale": 1.0,
+        "fps_limit": 0,       # 0 = the display's refresh rate
         "aspect": "fit",      # fit | fill | stretch
         "flip_x": False,
         "flip_y": False,

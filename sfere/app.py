@@ -96,6 +96,7 @@ class App:
         self._ui_shot = None
         self.frame_ms = 0.0
         self.fps = 0.0
+        self._deadline = 0.0
         self.engine = Engine(self.settings, video=args.video, audio_file=args.audio_file,
                              audio_sources=args.audio, play_audio=not args.mute)
         self.scenes.cam_aspect = self.settings["camera"]["width"] / self.settings["camera"]["height"]
@@ -176,12 +177,19 @@ class App:
         i = (mons.index(self.fullscreen_monitor) + 1) % len(mons) if self.fullscreen_monitor in mons else 0
         self.set_fullscreen(mons[i])
 
-    def target_fps(self) -> float:
+    def display_fps(self) -> float:
         mon = self.glfw.get_window_monitor(self.out_win)
         if not mon:
             mons = self.monitors()
             mon = mons[0] if mons else None
         return float(self.glfw.get_video_mode(mon).refresh_rate) if mon else 60.0
+
+    def target_fps(self) -> float:
+        """The output frame rate: the display's refresh rate, or the Output tab's limit below it
+        (frames faster than the display are never shown)."""
+        limit = float(self.settings["output"].get("fps_limit") or 0)
+        display = self.display_fps()
+        return min(limit, display) if limit > 0 else display
 
     def _native_render_size(self) -> tuple[int, int]:
         out = self.settings["output"]
@@ -330,9 +338,12 @@ class App:
         if now - self._fps_t >= 1.0:
             self.fps = self._frames / (now - self._fps_t)
             self._frames, self._fps_t = 0, now
-        budget = 1.0 / self.target_fps() - (time.monotonic() - now)
-        if budget > 0.001:
-            time.sleep(budget - 0.0005)
+        # Pace by deadlines so the average rate is exact; after a slow frame, start over from now
+        # rather than rushing to catch up.
+        self._deadline = max(self._deadline + 1.0 / self.target_fps(), now)
+        wait = self._deadline - time.monotonic()
+        if wait > 0.001:
+            time.sleep(wait - 0.0005)
         return True
 
     def run(self):

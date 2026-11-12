@@ -291,6 +291,18 @@ class Panels:
         if app.fullscreen_monitor and im.button("Back to a window (Esc)"):
             app.set_fullscreen(None)
         out = app.settings["output"]
+        display = app.display_fps()
+        rates = [0] + [r for r in (24, 25, 30, 48, 50, 60, 72, 90, 120, 144, 165, 240) if r < display]
+        labels = [f"Match display ({display:g} Hz)"] + [f"{r} fps" for r in rates[1:]]
+        cur = int(out.get("fps_limit") or 0)
+        ch, i = im.combo("Frame rate", rates.index(cur) if cur in rates else 0, labels)
+        if ch:
+            out["fps_limit"] = rates[i]
+        im.same_line()
+        im.text_disabled(f"now {app.fps:.1f} fps")
+        if im.is_item_hovered():
+            im.set_tooltip("Lower rates save GPU and power. Trails and motion look the same at any rate;\n"
+                           "some downloaded shaders with feedback move slower at lower rates.")
         _, out["start_on_external"] = im.checkbox("Go fullscreen on an external display at start and when one is plugged in",
                                                   bool(out.get("start_on_external", True)))
         ch, out["render_scale"] = im.slider_float("Render scale", float(out.get("render_scale", 1.0)), 0.5, 1.0)
