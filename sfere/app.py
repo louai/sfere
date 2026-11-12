@@ -129,6 +129,10 @@ class App:
         self._grabbers: dict[str, FrameGrabber] = {}
         if self.settings["virtual_camera"].get("enabled"):
             self.set_virtual_camera(True)
+        from .control import ControlServer
+        self.control = ControlServer(self)      # the MCP server (`sfere mcp`) talks to this
+        if self.control.error:
+            self.scenes.messages.append(f"Agent control off: {self.control.error}")
 
     @contextlib.contextmanager
     def output_context(self):
@@ -446,6 +450,7 @@ class App:
         if glfw.window_should_close(self.out_win) or glfw.window_should_close(self.ctl_win):
             return False
         glfw.poll_events()
+        self.control.poll()
         if self._monitors_changed:
             self._handle_monitor_change()
         self._frame_count += 1
@@ -524,6 +529,7 @@ class App:
                 settings_mod.save(s)
                 self.save_scenes()
         finally:
+            self.control.close()
             self.stop_recording()
             for t in self.finishing:
                 t.join()

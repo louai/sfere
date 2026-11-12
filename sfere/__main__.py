@@ -4,14 +4,20 @@
   sfere --video sample.mp4 --audio-file music.wav   development with recordings
   sfere --audio @DEFAULT_MONITOR@ --audio alsa_input...   choose audio sources (repeatable)
   sfere --touch off                       mouse-sized controls on a touch-screen laptop
+  sfere mcp                               the MCP server: lets an agent drive the running sfere
   sfere --capture out/run --duration 20   save output/control screenshots every few seconds, then exit
 """
 from __future__ import annotations
 
 import argparse
+import sys
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["mcp"]:          # no GUI, no GL: just the MCP server talking to a running sfere
+        from .mcp import main as mcp_main
+        return mcp_main()
     p = argparse.ArgumentParser(prog="sfere", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--video", help="use a video file instead of the webcam (loops)")
     p.add_argument("--audio-file", help="play and analyse this file instead of live audio")

@@ -208,6 +208,18 @@ A change of display backend takes effect the next time sfere starts. For one sta
 
 Text fields (the shader search, the file player) still need a keyboard. GNOME's on-screen keyboard doesn't open for XWayland windows by itself, so turn it on in **Settings → Accessibility → Typing** if you need it.
 
+## Letting an AI agent help
+
+sfere includes an MCP server, so an AI assistant such as Claude can work the control window for you: build a scene from a description, tune a layer, bind settings to the music, switch scenes, start a recording, or turn on the virtual camera. It can also take a screenshot of the output to check how a change looks.
+
+Set it up once in Claude Code:
+
+```
+claude mcp add --scope user sfere -- ~/.local/bin/sfere mcp
+```
+
+The assistant can only reach sfere while sfere is open, and it changes things exactly as the buttons do: what it changes shows on the output at once, and edits are saved like your own. Deleting or resetting a scene needs its explicit confirmation.
+
 ## Keyboard shortcuts
 
 Keys work when either sfere window has focus, unless you are typing in a text field.

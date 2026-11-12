@@ -36,6 +36,16 @@ With a touch screen connected, the control window switches to large controls and
 | `Space` | freeze |
 | `Ctrl+Q` | quit |
 
+## Agent control (MCP)
+
+`sfere mcp` is an MCP server that lets an AI agent drive the running sfere: read the status and scenes, switch and edit scenes, layers and bindings, take screenshots of the output, record, and run the virtual camera. Register it once with Claude Code:
+
+```sh
+claude mcp add --scope user sfere -- ~/.local/bin/sfere mcp
+```
+
+It talks to the running app through a socket at `$XDG_RUNTIME_DIR/sfere/control.sock`, so sfere has to be open. Every change goes through the same code as the control window's buttons.
+
 ## Shaders
 
 Drop shader files in and they load live; saving a file reloads it.
