@@ -1,0 +1,5 @@
+title = "Radial burst"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/isf/radial_burst.fs"
+gain = 0.7

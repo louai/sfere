@@ -1,0 +1,5 @@
+title = "RGB split (filter)"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/isf/rgb_split.fs"
+gain = 0.25

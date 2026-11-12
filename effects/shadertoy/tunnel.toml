@@ -1,0 +1,5 @@
+title = "Beat tunnel"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/shadertoy/tunnel.glsl"
+gain = 0.6

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+sfere/_native/*.so
+out/
+*.wav

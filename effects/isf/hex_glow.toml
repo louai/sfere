@@ -1,0 +1,5 @@
+title = "Hex glow"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/isf/hex_glow.fs"
+gain = 0.8

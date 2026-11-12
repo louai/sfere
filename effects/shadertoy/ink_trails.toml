@@ -1,0 +1,6 @@
+title = "Ink trails (multipass)"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/shadertoy/ink_trails.glsl"
+gain = 0.7
+resolution = 0.5

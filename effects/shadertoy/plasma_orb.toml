@@ -1,0 +1,11 @@
+title = "Plasma orb"
+author = "sfere"
+license = "MIT (written for sfere)"
+source = "effects/shadertoy/plasma_orb.glsl"
+gain = 0.8
+
+[params.glow]
+default = 1.0
+min = 0.0
+max = 3.0
+help = "overall intensity"
