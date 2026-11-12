@@ -292,10 +292,11 @@ class Particles:
         self.seed = np.random.rand(capacity).astype("f4")
         self._next = 0
 
-    def spawn(self, n: int, pos, vel, life, size, color) -> None:
+    def spawn(self, n: int, pos, vel, life, size, color) -> np.ndarray:
+        """Returns the slots used, for effects that keep more per particle."""
         n = int(min(n, self.cap))
         if n <= 0:
-            return
+            return np.zeros(0, int)
         dead = np.flatnonzero(self.life <= 0)
         if len(dead) < n:  # recycle the oldest slots round-robin
             idx = (np.arange(n) + self._next) % self.cap
@@ -308,6 +309,7 @@ class Particles:
         self.max_life[idx] = life
         self.size[idx] = size
         self.color[idx] = color
+        return idx
 
     def step(self, dt: float, gravity=(0.0, 0.0), drag: float = 0.0) -> None:
         alive = self.life > 0

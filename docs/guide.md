@@ -78,7 +78,7 @@ The **File player** plays an audio file through sfere for testing at home.
 
 ## 3. Scenes: pick and edit the look
 
-A scene is a stack of effect layers plus post-processing. sfere comes with seven:
+A scene is a stack of effect layers plus post-processing. sfere comes with eight:
 
 | Scene | Look |
 |---|---|
@@ -89,6 +89,7 @@ A scene is a stack of effect layers plus post-processing. sfere comes with seven
 | 5 Light Painting | Long-exposure trails that build up over time |
 | 6 Neon Shaders | Downloaded-style shaders: hexagons, a plasma orb, a radial burst |
 | 7 Ink Tunnel | A tunnel and multipass ink trails |
+| 8 Slipstream | Four trails and a spray of sparks follow the ball's direction and speed; each glows with one part of the music: sub-bass (pink), bass (orange), mids (aqua), highs (blue) |
 
 Switch scenes with the **Scene** dropdown at the top, or the keys 1 to 9 for the first nine scenes. The Scenes tab edits the current scene. Every change is kept: switch away and back, or restart sfere, and the scene is as you left it.
 

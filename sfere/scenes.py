@@ -112,6 +112,20 @@ PRESETS: list[dict] = [
             {"effect": "orb"},
         ],
     },
+    {
+        # trails and sparks follow the ball's direction and speed; palette colors 1-4 are the
+        # sub-bass, bass, mids and highs, and each glows with its band
+        "name": "Slipstream",
+        "palette": ["#ff2a6d", "#ff9e2a", "#2affc6", "#5a7bff"],
+        "post": {"decay": 0.78, "bloom": 1.3, "bloom_threshold": 0.45, "vignette": 0.45},
+        "layers": [
+            {"effect": "backdrop", "values": {"style": 1, "brightness": 0.02}},
+            {"effect": "band_trails"},
+            {"effect": "velocity_sparks"},
+            {"effect": "orb", "values": {"size": 1.3}},
+        ],
+        "bind": {"orb.brightness": ["audio.level", 0.6, 1.3, 0.1]},
+    },
 ]
 
 

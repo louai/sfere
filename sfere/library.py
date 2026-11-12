@@ -14,6 +14,8 @@ from . import settings as settings_mod
 from .scenes import PRESETS
 
 DEFAULT_PALETTE = ["#ff2bd6", "#7a2bff", "#2bd9ff", "#2bff88"]
+# the built-in scenes before the library recorded which it had seen (files without presets_seen)
+FIRST_PRESETS = ["Rave", "Museum", "Cosmic", "Ember Storm", "Light Painting", "Neon Shaders", "Ink Tunnel"]
 
 
 def path():
@@ -37,7 +39,7 @@ def load(settings: dict | None = None) -> list[dict]:
         data = json.loads(path().read_text())
         specs = data.get("scenes") if isinstance(data, dict) else None
         if specs and all(isinstance(s, dict) and s.get("name") for s in specs):
-            return specs
+            return _add_new_presets(specs, data.get("presets_seen", FIRST_PRESETS))
     except FileNotFoundError:
         pass
     except (OSError, ValueError):
@@ -46,11 +48,24 @@ def load(settings: dict | None = None) -> list[dict]:
     return defaults((settings or {}).get("scene_layers"))
 
 
+def _add_new_presets(specs: list[dict], seen: list[str]) -> list[dict]:
+    """Built-in scenes added in a newer sfere join the library (at the end, under a free
+    name); ones the user deleted stay deleted."""
+    for p in PRESETS:
+        if p["name"] not in seen:
+            spec = copy.deepcopy(p)
+            spec["preset"] = p["name"]
+            spec["name"] = unique_name(p["name"], [s["name"] for s in specs])
+            specs.append(spec)
+    return specs
+
+
 def save(specs: list[dict]) -> None:
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"version": 1, "scenes": specs}, indent=1))
+    seen = sorted(set(FIRST_PRESETS) | {x["name"] for x in PRESETS})
+    tmp.write_text(json.dumps({"version": 1, "presets_seen": seen, "scenes": specs}, indent=1))
     tmp.replace(p)
 
 

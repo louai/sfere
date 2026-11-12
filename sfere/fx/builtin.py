@@ -527,5 +527,137 @@ void main() {
                           c1=tuple(palette_color(f.palette, 0.0)), c2=tuple(palette_color(f.palette, 0.5)))
 
 
+BANDS = ("sub", "bass", "mid", "high")
+
+
+def band_glow(f: Frame, base: float, glow: float) -> np.ndarray:
+    """Brightness per band (sub, bass, mid, high): base, plus glow times the band's energy
+    (shaped so hits stand out from the bed)."""
+    e = np.array([getattr(f.audio, b, 0.0) for b in BANDS], "f4").clip(0, 1)
+    return base + glow * e ** 1.5
+
+
+class BandTrails(Effect):
+    """Four ribbons side by side along the ball's path, one per frequency band (sub-bass,
+    bass, mids, highs from left to right of the motion); each glows with its band."""
+    name = "band_trails"
+    params = {
+        "length": Param(0.9, 0.1, 3.0, help="seconds of history"),
+        "width": Param(0.005, 0.001, 0.03, help="width of each band's ribbon"),
+        "spacing": Param(0.011, 0.0, 0.05, help="distance between the ribbons"),
+        "speed_spread": Param(1.2, 0.0, 4.0, help="the ribbons fan out as the ball speeds up"),
+        "glow": Param(2.2, 0.0, 5.0, help="how much each band's energy brightens its ribbon"),
+        "base": Param(0.12, 0.0, 1.0, help="brightness with no sound"),
+        "taper": Param(1.0, 0.0, 1.0),
+    }
+
+    def __init__(self, gl, **v):
+        super().__init__(gl, **v)
+        self.points: deque = deque(maxlen=1200)
+        self.ribbons = Ribbons(gl, 8192)
+
+    def update(self, f: Frame):
+        b = f.ball
+        if b.visible > 0.05:
+            self.points.append((f.t, b.x, b.y, b.speed, b.visible))
+        while self.points and f.t - self.points[0][0] > self["length"]:
+            self.points.popleft()
+
+    def draw(self, f: Frame):
+        if len(self.points) < 3:
+            return
+        arr = np.array(self.points, "f4")
+        arr = arr[::max(1, len(arr) // 120)]
+        pts = catmull_rom(arr[:, 1:3], 3)
+        n = len(pts)
+        src = np.linspace(0, len(arr) - 1, n)
+        spd = np.interp(src, np.arange(len(arr)), arr[:, 3]).astype("f4")
+        vis = np.interp(src, np.arange(len(arr)), arr[:, 4]).astype("f4")
+        age = np.linspace(1.0, 0.0, n, dtype="f4")       # 1 = oldest
+        d = np.gradient(pts, axis=0)
+        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-6)
+        nrm = np.stack([-d[:, 1], d[:, 0]], 1)
+        fade = (1.0 - age * self["taper"]) ** 1.5 * vis
+        spread = self["spacing"] * (1.0 + self["speed_spread"] * spd)
+        glow = band_glow(f, self["base"], self["glow"])
+        for k in range(4):
+            lane = pts + nrm * (spread * (k - 1.5))[:, None]
+            col = palette_color(f.palette, k / 4.0)      # each band keeps its palette color
+            alpha = fade * glow[k]
+            colors = np.concatenate([np.tile(col, (n, 1)), alpha[:, None]], 1).astype("f4")
+            w = self["width"] * (0.6 + 0.8 * glow[k] / max(self["glow"] + self["base"], 1e-3)) \
+                * (1.0 - age * self["taper"]) ** 0.5
+            self.ribbons.draw(strip_from_path(lane, w.astype("f4"), colors), f.aspect)
+
+    def release(self):
+        self.ribbons.release()
+
+
+class VelocitySparks(Effect):
+    """Sparks thrown along the ball's direction of travel, as fast as it moves, drawn as
+    streaks along their own velocity. Each spark belongs to a frequency band and glows with it."""
+    name = "velocity_sparks"
+    params = {
+        "rate": Param(900, 0, 4000, help="sparks per second at full speed"),
+        "carry": Param(0.9, 0.0, 2.0, help="how much of the ball's velocity the sparks take"),
+        "spread": Param(0.35, 0.0, 1.5, help="cone around the direction of travel (radians)"),
+        "kick": Param(0.15, 0.0, 1.0, help="extra launch speed"),
+        "life": Param(0.8, 0.1, 3.0),
+        "drag": Param(1.8, 0.0, 6.0),
+        "streak": Param(0.05, 0.0, 0.2, help="seconds of motion each streak shows"),
+        "width": Param(0.0035, 0.0005, 0.02),
+        "glow": Param(2.5, 0.0, 6.0, help="how much each band's energy brightens its sparks"),
+        "base": Param(0.15, 0.0, 1.0, help="brightness with no sound"),
+    }
+
+    def __init__(self, gl, **v):
+        super().__init__(gl, **v)
+        self.p = Particles(12000)
+        self.band = np.zeros(self.p.cap, np.int8)
+        self.sprites = Sprites(gl, 12000)
+        self.ribbons = Ribbons(gl, 12000 * 6)
+        self._acc = 0.0
+
+    def update(self, f: Frame):
+        b = f.ball
+        v = np.array([b.vx, b.vy], "f4")
+        speed = float(np.linalg.norm(v))
+        if b.visible > 0.2 and speed > 1e-3:
+            self._acc += self["rate"] * min(1.0, b.speed) * f.dt
+            n = int(self._acc)
+            self._acc -= n
+            if n:
+                ang = math.atan2(v[1], v[0]) + rng.normal(0, self["spread"], n)
+                sp = speed * self["carry"] * rng.uniform(0.6, 1.2, n) + self["kick"] * rng.uniform(0, 1, n)
+                vel = np.stack([np.cos(ang) * sp, np.sin(ang) * sp], 1)
+                band = rng.integers(0, 4, n)
+                cols = np.array([[*palette_color(f.palette, k / 4.0), 1.0] for k in range(4)], "f4")
+                idx = self.p.spawn(n, np.array([b.x, b.y]) + rng.normal(0, b.r * 0.4, (n, 2)), vel,
+                                   self["life"] * rng.uniform(0.5, 1.0, n), self["width"] * rng.uniform(1.5, 3.0, n),
+                                   cols[band])
+                self.band[idx] = band
+        self.p.step(f.dt, drag=self["drag"])
+
+    def draw(self, f: Frame):
+        alive = np.flatnonzero(self.p.life > 0)
+        if not len(alive):
+            return
+        k = np.clip(self.p.life[alive] / self.p.max_life[alive], 0, 1)
+        glow = band_glow(f, self["base"], self["glow"])[self.band[alive]]
+        alpha = (k * glow).astype("f4")
+        pos, vel = self.p.pos[alive], self.p.vel[alive]
+        tail = pos - vel * self["streak"]
+        colors = np.concatenate([self.p.color[alive, :3], alpha[:, None]], 1).astype("f4")
+        self.ribbons.draw(segments_to_quads(tail, pos, self["width"], colors), f.aspect,
+                          mode=moderngl.TRIANGLES, softness=0.8)
+        heads = self.p.instances()
+        heads[:, 6] = alpha * 0.8
+        self.sprites.draw(heads, f.aspect, shape=1, time=f.t)
+
+    def release(self):
+        self.sprites.release()
+        self.ribbons.release()
+
+
 BUILTIN = {c.name: c for c in (Orb, Trail, Ripples, Sparkles, Embers, Orbiters, SpectrumHalo, Constellation,
-                               Shockwave, Backdrop)}
+                               Shockwave, Backdrop, BandTrails, VelocitySparks)}

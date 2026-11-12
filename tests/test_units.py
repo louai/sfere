@@ -129,3 +129,19 @@ def test_scene_library_file(tmp_path, monkeypatch):
     library.path().write_text("{ not json")
     assert [s["name"] for s in library.load({})][0] == "Rave"       # broken file: defaults, file kept aside
     assert (tmp_path / "scenes.json.broken").exists()
+
+
+def test_new_built_in_scenes_join_an_existing_library(tmp_path, monkeypatch):
+    import json
+    from sfere import library
+    monkeypatch.setattr(settings, "PATH", tmp_path / "settings.toml")
+    # a library saved before Slipstream existed, where the user deleted Museum
+    old = [s for s in library.defaults() if s["name"] in library.FIRST_PRESETS and s["name"] != "Museum"]
+    library.path().write_text(json.dumps({"version": 1, "scenes": old}))
+    names = [s["name"] for s in library.load({})]
+    assert names[-1] == "Slipstream" and "Museum" not in names
+    library.save(library.load({}))
+    assert [s["name"] for s in library.load({})].count("Slipstream") == 1     # added once
+    specs = library.load({})
+    library.save([s for s in specs if s["name"] != "Slipstream"])
+    assert "Slipstream" not in [s["name"] for s in library.load({})]          # deleting it sticks
