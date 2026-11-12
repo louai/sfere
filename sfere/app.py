@@ -120,6 +120,8 @@ class App:
         glfw.set_monitor_callback(lambda m, event: setattr(self, "_monitors_changed", True))
         out["mode"] = "window"          # sfere always starts windowed; F goes fullscreen
         self._frame_count = 0
+        from .cycle import SceneCycle
+        self.cycle = SceneCycle(self.settings["cycle"])
         self.recording = None           # outputs.recorder.Recording while recording
         self.finishing: list[threading.Thread] = []   # recordings being written out
         self.record_log: list[str] = []  # finished files and problems, newest last
@@ -321,6 +323,8 @@ class App:
             self.tap_tempo()
         elif key == g.KEY_R:
             self.toggle_recording()
+        elif key == g.KEY_A:
+            self.toggle_cycle()
         elif key == g.KEY_SPACE:
             self.freeze = not self.freeze
         elif g.KEY_1 <= key <= g.KEY_9:
@@ -332,6 +336,17 @@ class App:
 
     def toggle_blackout(self):
         self.scenes.blackout_target = 0.0 if self.scenes.blackout_target > 0.5 else 1.0
+
+    def toggle_cycle(self):
+        cfg = self.settings["cycle"]
+        cfg["enabled"] = not cfg.get("enabled")
+
+    def _cycle_scenes(self, now: float):
+        a = self.last_audio
+        i = self.cycle.tick(now, self.scenes.current.name, self.scenes.names,
+                            beat="beat" in (a.events if a else ()), locked=bool(a and a.locked))
+        if i is not None:
+            self.select_scene(i)
 
     def select_scene(self, i: int):
         if 0 <= i < len(self.scenes.names):
@@ -455,6 +470,7 @@ class App:
         self.last_ball, self.last_audio = ball, audio
         if not self.freeze or self.last_tex is None:
             self.last_tex = self.scenes.render(t - self.t0, dt, ball, audio)
+        self._cycle_scenes(time.monotonic())
         if self.recording or self.vcam:
             self._feed_outputs(time.monotonic())
         fw, fh = glfw.get_framebuffer_size(self.out_win)

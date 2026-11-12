@@ -61,6 +61,12 @@ DEFAULTS: dict = {
         "height": 720,
         "fps": 30,
     },
+    "cycle": {
+        "enabled": False,     # move to another scene every `seconds`
+        "seconds": 30,
+        "order": "in order",  # "in order" | "shuffle"
+        "on_beat": True,      # with a locked tempo, change on the next beat
+    },
     "ui": {
         # auto = on when a touch screen is connected: larger controls, finger scrolling, and
         # XWayland so touches reach the window (sfere/touch.py)

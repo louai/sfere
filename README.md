@@ -31,6 +31,7 @@ With a touch screen connected, the control window switches to large controls and
 | `B` | black out |
 | `T` | tap tempo |
 | `R` | start/stop recording |
+| `A` | cycle through the scenes |
 | `M` | mirror |
 | `D` | debug marker on the output |
 | `Space` | freeze |

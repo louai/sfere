@@ -175,6 +175,11 @@ class Panels:
             app.tap_tempo()
         if self._button("Mirror (M)", app.engine.mirror):
             app.engine.mirror = not app.engine.mirror
+        cyc = app.cycle
+        label = f"Cycle: next in {cyc.remaining(time.monotonic()):.0f} s (A)###cycle" if cyc.enabled \
+            else "Cycle scenes (A)###cycle"
+        if self._button(label, cyc.enabled):
+            app.toggle_cycle()
         rec = app.recording
         label = f"Stop recording {_clock(rec.elapsed)} (R)###record" if rec else "Record (R)###record"
         if rec:
@@ -409,6 +414,7 @@ class Panels:
         scene = mgr.current
         im.separator_text("Look")
         _, mgr.fade_time = self._slider("Crossfade (s)", mgr.fade_time, 0.1, 8.0)
+        self._cycle_settings()
         im.text("Palette")
         for ci, c in enumerate(scene.palette):
             im.same_line()
@@ -429,6 +435,31 @@ class Panels:
                 _, scene.post[k] = self._slider(f"{k}##post", v, float(lo), float(hi))
         self._layers(mgr, scene)
         self._add_layer(mgr)
+
+    def _cycle_settings(self):
+        im, app = self.imgui, self.app
+        cfg, cyc = app.settings["cycle"], app.cycle
+        im.separator_text("Cycle")
+        ch, on = im.checkbox("Cycle through the scenes (A)", cyc.enabled)
+        if ch:
+            cfg["enabled"] = on
+        if cyc.enabled:
+            im.same_line()
+            im.text_disabled(f"next scene in {cyc.remaining(time.monotonic()):.0f} s")
+        steps = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600]
+        cur = int(cfg.get("seconds", 30))
+        i = min(range(len(steps)), key=lambda k: abs(steps[k] - cur))
+        ch, i = self._slider("Every##cycle", i, 0, len(steps) - 1,
+                             f"{steps[i] // 60} min {steps[i] % 60:02d} s" if steps[i] >= 60 else f"{steps[i]} s")
+        if ch:
+            cfg["seconds"] = steps[i]
+        orders = ["in order", "shuffle"]
+        ch, k = im.combo("Order##cycle", orders.index(cfg.get("order", "in order")) if cfg.get("order") in orders else 0,
+                         ["In list order", "Shuffle (never the same scene twice in a row)"])
+        if ch:
+            cfg["order"] = orders[k]
+        _, cfg["on_beat"] = im.checkbox("Change on the beat (when the tempo is locked)", bool(cfg.get("on_beat", True)))
+        im.text_disabled("Changing scene by hand starts the countdown again.")
 
     def _scene_library(self):
         im, app, mgr = self.imgui, self.app, self.app.scenes

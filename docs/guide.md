@@ -92,6 +92,16 @@ A scene is a stack of effect layers plus post-processing. sfere comes with seven
 
 Switch scenes with the **Scene** dropdown at the top, or the keys 1 to 9 for the first nine scenes. The Scenes tab edits the current scene. Every change is kept: switch away and back, or restart sfere, and the scene is as you left it.
 
+### Cycling through scenes
+
+sfere can change scenes by itself, for a long set or an installation. Turn it on with **Cycle scenes** at the top of the control window, the A key, or **Cycle through the scenes** in the Scenes tab. The button counts down to the next change.
+
+- **Every**: how long each scene stays, from 5 seconds to 10 minutes.
+- **Order**: the dropdown's order, or **Shuffle**, which picks a different scene each time.
+- **Change on the beat**: when sfere has locked onto the tempo, a change waits for the next beat (at most two seconds), so it lands on the music.
+
+Each change uses the crossfade. Picking a scene yourself starts the countdown again, so the cycle never cuts straight into a scene you just chose.
+
 ### Managing scenes
 
 - **New**: a new scene with a simple backdrop and the orb, placed after the current one.
@@ -234,6 +244,7 @@ Keys work when either sfere window has focus, unless you are typing in a text fi
 | B | Black out |
 | T | Tap tempo |
 | R | Start or stop recording |
+| A | Cycle through the scenes on or off |
 | M | Mirror the camera |
 | D | Debug marker on the output |
 | C | Show the Camera tab |

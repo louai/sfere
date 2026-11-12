@@ -351,6 +351,23 @@ class Commands:
         self.scenes.sync()
         return {"post": {k: s.post.get(k, d) for k, d in DEFAULT_POST.items()}, "palette": [_hex(c) for c in s.palette]}
 
+    def cmd_cycle(self, on: bool | None = None, seconds: float | None = None, order: str | None = None,
+                  on_beat: bool | None = None):
+        cfg = self.app.settings["cycle"]
+        if order not in (None, "in order", "shuffle"):
+            raise CommandError("order is 'in order' or 'shuffle'")
+        if seconds is not None:
+            if float(seconds) < 1:
+                raise CommandError("seconds must be at least 1")
+            cfg["seconds"] = float(seconds)
+        for k, v in (("enabled", on), ("order", order), ("on_beat", on_beat)):
+            if v is not None:
+                cfg[k] = v
+        cyc = self.app.cycle
+        return {"on": cyc.enabled, "seconds": cyc.seconds, "order": cfg.get("order", "in order"),
+                "on_beat": bool(cfg.get("on_beat", True)),
+                "next_scene_in_s": round(cyc.remaining(time.monotonic()), 1) if cyc.enabled else None}
+
     # ------------------------------------------------------------------ layers
     def cmd_set_layer(self, layer, values: dict | None = None, enabled: bool | None = None):
         i = self._layer(layer)

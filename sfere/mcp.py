@@ -54,6 +54,11 @@ TOOLS = [
      _obj({"delta": {"type": "integer"}}, ["delta"]), "move_scene"),
     ("reset_scene", "Put a built-in scene back the way sfere ships it (replaces its layers; needs confirm=true).",
      _obj({"confirm": {"type": "boolean"}}, ["confirm"]), "reset_scene"),
+    ("cycle", "Cycle through the scenes automatically: on/off, every N seconds, in list order or shuffled, and "
+     "whether a due change waits for the next beat (when the tempo is locked). Any manual scene change restarts "
+     "the countdown.", _obj({"on": {"type": "boolean"}, "seconds": {"type": "number"},
+                             "order": {"type": "string", "enum": ["in order", "shuffle"]},
+                             "on_beat": {"type": "boolean"}}), "cycle"),
     ("set_look", "Change the current scene's post settings (decay, bloom, bloom_threshold, exposure, vignette, zoom, "
      "rotate, hue_shift, kaleido, kaleido_spin), its palette (hex colors the effects take their colors from) or "
      "the crossfade time.", _obj({"post": {"type": "object", "description": "{setting: value}"},
