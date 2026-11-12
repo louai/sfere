@@ -146,7 +146,45 @@ Then set the value **When quiet / still** and **When loud / fast**. sfere moves 
 - **Flip horizontally**: for rear projection. **Flip vertically**: for a projector mounted upside down.
 - **Black out**: fades the output to black. It fades back in when you turn it off.
 - **Debug marker**: a green cross on the output where sfere places the ball, and a beat flash in the corner.
-- **Control window**: touch-screen settings; see the next section.
+- **Control window**: touch-screen settings; see [Using a touch screen](#using-a-touch-screen).
+
+### Recording
+
+Press **Record** at the top of the control window, or the R key. The button turns red and counts the time; press it again to stop. A recording saves up to three files in `~/Videos/sfere`, named by the time it started:
+
+- **...-output.mp4**: what the output shows, with the music.
+- **...-camera.mp4**: what the camera saw, mirrored like the Camera tab.
+- **...-audio.wav**: the music sfere listened to.
+
+The camera file and the WAV file replay the whole session, with the tracking and the beats, so you can try other scenes on it later:
+
+```
+sfere --video sfere-...-camera.mp4 --audio-file sfere-...-audio.wav
+```
+
+In the Output tab, under **Recording**:
+
+- choose what to record: the output, the camera, or both;
+- **Output size** and **Output frame rate**: 1080p at 30 fps by default. **Full render** records every pixel sfere draws, which makes large files;
+- **Folder**: where the files go. **Open folder** shows it.
+
+Recording uses the graphics chip to encode video when it can, so the show doesn't slow down. If the computer can't keep up, a recording skips frames rather than slowing the output; the status line counts them. Finishing a recording takes a moment after you stop it, while the sound is added.
+
+### Virtual camera
+
+Tick **Send the output to other apps as a camera named “sfere”** in the Output tab. Other apps then see a camera called sfere: use it in OBS, a video call, or a browser. Choose its size under **Camera size** (1280×720 by default). sfere remembers the setting and starts the camera again next time.
+
+There are two kinds of virtual camera, and sfere uses the best one it finds:
+
+- **PipeWire camera** works without any setup. OBS 30 and later (Video Capture Device, PipeWire), Firefox and Chrome can use it, but some apps, like Zoom, can't.
+- **v4l2loopback** works with every app, but needs a one-time install:
+
+  ```
+  sudo apt install v4l2loopback-dkms
+  sudo modprobe v4l2loopback video_nr=10 card_label=sfere exclusive_caps=1
+  ```
+
+  With Secure Boot on, the install asks you to choose a password, and asks for it again on a blue screen at the next restart, to allow the new driver.
 
 ## Using a touch screen
 
@@ -182,6 +220,7 @@ Keys work when either sfere window has focus, unless you are typing in a text fi
 | Esc | Leave fullscreen |
 | B | Black out |
 | T | Tap tempo |
+| R | Start or stop recording |
 | M | Mirror the camera |
 | D | Debug marker on the output |
 | C | Show the Camera tab |
@@ -251,3 +290,5 @@ Check each shader's license before a paid performance. Most Shadertoy shaders ar
 - **The frame rate drops.** Lower **Render scale**, choose a lower **Frame rate**, or remove heavy shader layers.
 - **Touches do nothing.** Check **Output → Control window**: it should show "Display: XWayland". If not, set Touch-friendly controls to Automatic or On and restart sfere.
 - **A shader shows an error.** The message names the line. Fix the file and save it; sfere reloads it at once.
+- **An app doesn't list the sfere camera.** The PipeWire camera only shows in apps that support PipeWire cameras. Install v4l2loopback (see [Virtual camera](#virtual-camera)) for the others, then turn the virtual camera off and on again.
+- **A recording skips frames.** Choose a smaller **Output size** or a lower frame rate, or record only the output.

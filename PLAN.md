@@ -26,7 +26,8 @@ sfere takes a live webcam feed of someone dancing with a glowing contact-jugglin
 - **The kaleidoscope folds around the ball**, not the screen center, so the ball is always in the image.
 - **This laptop's digital mic delivers a constant −1.0 signal**: muted or misconfigured at the system level. sfere detects such a stuck source, reports it, and mixes silence in its place.
 - **Touch screens need XWayland.** GLFW's Wayland backend ignores touch events, so with a touch screen connected sfere runs through XWayland, which turns touches into pointer events. The control window then switches to touch mode: larger controls, finger scrolling, buttons for every show shortcut (`sfere/touch.py`, the Output tab, `--touch`). Under XWayland the UI is scaled by the monitor's content scale, and fullscreen renders at the display's scaled resolution, as it does on Wayland. The user guide is `docs/guide.md`, also shown in the Help tab.
-- **Not done yet (M5):** NDI and virtual-camera outputs, OSC, Identify, borderless mode, and the test with a live performer in a dim room.
+- **Recording and virtual camera** (`sfere/outputs/`). Recording writes the output with the music, the camera (as shown, mirrored) and the music as WAV; the camera and WAV replay a session through `--video`/`--audio-file`. Frames are read back from the GPU one frame late through pixel buffers and fed to ffmpeg (VAAPI when a test encode works, else x264) with wall-clock timestamps; a slow encoder drops frames instead of stalling the show. The virtual camera uses v4l2loopback when a loopback device exists, else a PipeWire camera node through GStreamer's `pipewiresink` (this machine has no v4l2loopback and Secure Boot on, so PipeWire is what runs here).
+- **Not done yet (M5):** NDI, OSC, Identify, borderless mode, and the test with a live performer in a dim room.
 
 ---
 

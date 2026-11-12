@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from . import library
 from . import settings as settings_mod
 from .compat import load_gui
 from .engine import Engine
+from .outputs.grab import FrameGrabber, even
 from .render.gl import GL, attach_current_context
 from .scenes import SceneManager
 from .touch import touch_mode, touchscreen_present, wants_xwayland
@@ -119,6 +121,14 @@ class App:
         elif out.get("start_on_external", True) and self.external_monitors():
             self._start_fullscreen = self.preferred_monitor()
         self._frame_count = 0
+        self.recording = None           # outputs.recorder.Recording while recording
+        self.finishing: list[threading.Thread] = []   # recordings being written out
+        self.record_log: list[str] = []  # finished files and problems, newest last
+        self.vcam = None                # outputs.vcam.VirtualCamera
+        self.vcam_error = ""
+        self._grabbers: dict[str, FrameGrabber] = {}
+        if self.settings["virtual_camera"].get("enabled"):
+            self.set_virtual_camera(True)
 
     @contextlib.contextmanager
     def output_context(self):
@@ -245,6 +255,8 @@ class App:
             self.toggle_blackout()
         elif key == g.KEY_T:
             self.tap_tempo()
+        elif key == g.KEY_R:
+            self.toggle_recording()
         elif key == g.KEY_SPACE:
             self.freeze = not self.freeze
         elif g.KEY_1 <= key <= g.KEY_9:
@@ -261,6 +273,82 @@ class App:
         if 0 <= i < len(self.scenes.names):
             self.scenes.select(i)
             self.settings["scene"] = self.scenes.names[i]
+
+    # ------------------------------------------------------------------ recording, virtual camera
+    def record_output_size(self) -> tuple[int, int]:
+        w, h = self.scenes.size
+        want = int(self.settings["recording"].get("height") or 0)
+        return (even(w), even(h)) if not want or want >= h else (even(want * w / h), even(want))
+
+    def toggle_recording(self):
+        self.stop_recording() if self.recording else self.start_recording()
+
+    def start_recording(self) -> bool:
+        from .outputs.recorder import Recording
+        cfg = self.settings["recording"]
+        frame = self.engine.last_full_frame
+        cam = cfg.get("camera") and frame is not None
+        if not cfg.get("output") and not cam:
+            self.record_log.append("Nothing to record: turn on the output or the camera.")
+            return False
+        try:
+            self.recording = Recording(
+                Path(cfg.get("folder") or "~/Videos/sfere").expanduser(), self.engine.audio,
+                self.record_output_size() if cfg.get("output") else None, float(cfg.get("fps", 30)),
+                (frame.shape[1], frame.shape[0]) if cam else None, float(self.settings["camera"].get("fps", 30)))
+        except (OSError, RuntimeError) as e:
+            self.record_log.append(f"Couldn't start recording: {e}")
+            return False
+        self.engine.recording = self.recording if cam else None
+        return True
+
+    def stop_recording(self):
+        """Stops at once; the files are finished on a background thread."""
+        rec, self.recording = self.recording, None
+        self.engine.recording = None
+        if rec is None:
+            return
+
+        def finish():
+            files = rec.stop()
+            self.record_log += rec.messages + [f"Saved {f}" for f in files]
+        t = threading.Thread(target=finish, name="record:finish", daemon=False)
+        t.start()
+        self.finishing.append(t)
+
+    def set_virtual_camera(self, on: bool):
+        from .outputs.vcam import VirtualCamera
+        cfg = self.settings["virtual_camera"]
+        cfg["enabled"] = on
+        if self.vcam:
+            self.vcam.close()
+            self.vcam = None
+        self.vcam_error = ""
+        if on:
+            try:
+                self.vcam = VirtualCamera((even(cfg["width"]), even(cfg["height"])), int(cfg.get("fps", 30)))
+            except (OSError, RuntimeError) as e:
+                self.vcam_error = str(e)
+
+    def _feed_outputs(self, now: float):
+        """Hand the frame just rendered to the recording and the virtual camera, each at its
+        own rate and size (GPU readback, collected one frame later)."""
+        rec, vcam = self.recording, self.vcam
+        for key, wants, size, push in (
+                ("record", rec is not None and rec.wants_output_frame(now), rec and rec.output and rec.output_size,
+                 rec and rec.push_output),
+                ("vcam", vcam is not None and vcam.alive and vcam.wants_frame(now), vcam and vcam.size,
+                 vcam and vcam.push)):
+            if not wants:
+                continue
+            g = self._grabbers.get(key)
+            if g is None or g.size != tuple(size):
+                if g:
+                    g.release()
+                g = self._grabbers[key] = FrameGrabber(self.gl, size)
+            data = g.grab(self.last_tex)
+            if data is not None:
+                push(data)
 
     def save_scenes(self):
         """Write the scene library, with the current scene's edits, to scenes.json."""
@@ -300,6 +388,8 @@ class App:
         self.last_ball, self.last_audio = ball, audio
         if not self.freeze or self.last_tex is None:
             self.last_tex = self.scenes.render(t - self.t0, dt, ball, audio)
+        if self.recording or self.vcam:
+            self._feed_outputs(time.monotonic())
         fw, fh = glfw.get_framebuffer_size(self.out_win)
         self.ctx.screen.use()
         self.ctx.viewport = (0, 0, fw, fh)
@@ -434,5 +524,10 @@ class App:
                 settings_mod.save(s)
                 self.save_scenes()
         finally:
+            self.stop_recording()
+            for t in self.finishing:
+                t.join()
+            if self.vcam:
+                self.vcam.close()
             self.engine.close()
             self.glfw.terminate()

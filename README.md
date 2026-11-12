@@ -30,6 +30,7 @@ With a touch screen connected, the control window switches to large controls and
 | `Esc` | leave fullscreen |
 | `B` | black out |
 | `T` | tap tempo |
+| `R` | start/stop recording |
 | `M` | mirror |
 | `D` | debug marker on the output |
 | `Space` | freeze |

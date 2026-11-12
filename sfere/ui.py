@@ -6,6 +6,7 @@ down, and has buttons for everything the keyboard shortcuts do.
 from __future__ import annotations
 
 import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from .touch import touch_mode, wants_xwayland
 TABS = ["Camera", "Audio", "Scenes", "Output", "Debug", "Help"]
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "guide.md"
 ACCENT = (0.35, 0.25, 0.7, 1)
+RECORDING = (0.75, 0.15, 0.15, 1)
 # style sizes scaled with the display and touch mode, from ImGui's defaults
 SIZES = ("window_padding", "frame_padding", "item_spacing", "item_inner_spacing", "cell_padding", "indent_spacing",
          "scrollbar_size", "grab_min_size", "separator_text_padding", "frame_rounding", "grab_rounding",
@@ -173,6 +175,14 @@ class Panels:
             app.tap_tempo()
         if self._button("Mirror (M)", app.engine.mirror):
             app.engine.mirror = not app.engine.mirror
+        rec = app.recording
+        label = f"Stop recording {_clock(rec.elapsed)} (R)###record" if rec else "Record (R)###record"
+        if rec:
+            im.push_style_color(im.Col_.button, RECORDING)
+        if self._button(label):
+            app.toggle_recording()
+        if rec:
+            im.pop_style_color()
         im.spacing()
         self._scene_combo()
         for msg in app.scenes.messages[-4:]:
@@ -630,7 +640,76 @@ class Panels:
         if ch:
             app.scenes.blackout_target = 1.0 if bo else 0.0
         _, app.debug = im.checkbox("Debug marker on output (D)", app.debug)
+        self._recording_settings()
+        self._virtual_camera_settings()
         self._touch_settings()
+
+    def _recording_settings(self):
+        im, app = self.imgui, self.app
+        cfg = app.settings["recording"]
+        rec = app.recording
+        im.separator_text("Recording")
+        im.begin_disabled(rec is not None)
+        _, cfg["output"] = im.checkbox("The output, with the music", bool(cfg.get("output", True)))
+        _, cfg["camera"] = im.checkbox("The camera, and the music as a WAV file", bool(cfg.get("camera", True)))
+        if im.is_item_hovered():
+            im.set_tooltip("Replay a recorded session with --video <camera file> --audio-file <WAV file>")
+        heights = [720, 1080, 1440, 0]
+        w, h = app.scenes.size
+        labels = [f"{x}p" for x in heights[:-1]] + [f"Full render ({w}×{h})"]
+        cur = int(cfg.get("height", 1080))
+        ch, i = im.combo("Output size", heights.index(cur) if cur in heights else 1, labels)
+        if ch:
+            cfg["height"] = heights[i]
+        rates = [24, 25, 30, 50, 60]
+        cur = int(cfg.get("fps", 30))
+        ch, i = im.combo("Output frame rate", rates.index(cur) if cur in rates else 2, [f"{r} fps" for r in rates])
+        if ch:
+            cfg["fps"] = rates[i]
+        _, cfg["folder"] = im.input_text("Folder", cfg.get("folder", "~/Videos/sfere"))
+        im.end_disabled()
+        im.same_line()
+        if im.button("Open folder"):
+            folder = Path(cfg.get("folder") or "~/Videos/sfere").expanduser()
+            folder.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen(["xdg-open", str(folder)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if rec:
+            im.push_style_color(im.Col_.button, RECORDING)
+            if im.button(f"Stop recording ({_clock(rec.elapsed)})"):
+                app.stop_recording()
+            im.pop_style_color()
+            im.same_line()
+            im.text_disabled(rec.status())
+        elif im.button("Start recording (R)"):
+            app.start_recording()
+        if any(t.is_alive() for t in app.finishing):
+            im.text_disabled("Finishing the last recording…")
+        for line in app.record_log[-4:]:
+            (im.text_disabled if line.startswith("Saved") else lambda t: im.text_colored((1, 0.6, 0.3, 1), t))(line)
+
+    def _virtual_camera_settings(self):
+        im, app = self.imgui, self.app
+        from .outputs.vcam import NAME, setup_hint
+        cfg = app.settings["virtual_camera"]
+        im.separator_text("Virtual camera")
+        ch, on = im.checkbox(f"Send the output to other apps as a camera named “{NAME}”", bool(cfg.get("enabled")))
+        if ch:
+            app.set_virtual_camera(on)
+        sizes = [(640, 360), (1280, 720), (1920, 1080)]
+        cur = (int(cfg.get("width", 1280)), int(cfg.get("height", 720)))
+        ch, i = im.combo("Camera size", sizes.index(cur) if cur in sizes else 1, [f"{w}×{h}" for w, h in sizes])
+        if ch:
+            cfg["width"], cfg["height"] = sizes[i]
+            if app.vcam:
+                app.set_virtual_camera(True)
+        if app.vcam_error:
+            im.text_colored((1, 0.6, 0.3, 1), app.vcam_error)
+        elif app.vcam:
+            state = "running" if app.vcam.alive else f"stopped: {app.vcam.pipe.error or app.vcam.pipe.last_log()}"
+            im.text_disabled(f"{app.vcam.where}, {app.vcam.size[0]}×{app.vcam.size[1]} at {app.vcam.fps} fps: {state}")
+        if (app.vcam is None or app.vcam.backend == "pipewire") and (cfg.get("enabled") or app.vcam_error):
+            im.text_disabled("OBS 30+ (Video Capture Device, PipeWire), Firefox and Chrome see PipeWire cameras.\n"
+                             + setup_hint())
 
     def _touch_settings(self):
         im, app = self.imgui, self.app
@@ -769,3 +848,8 @@ def parse_markdown(text: str) -> list[tuple]:
         i += 1
     flush()
     return blocks
+
+
+def _clock(seconds: float) -> str:
+    m, s = divmod(int(seconds), 60)
+    return f"{m // 60}:{m % 60:02d}:{s:02d}" if m >= 60 else f"{m:02d}:{s:02d}"

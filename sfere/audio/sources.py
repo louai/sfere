@@ -259,6 +259,8 @@ class AudioEngine:
     def __init__(self, latency_ms: float = 0.0):
         self.analyser = Analyser(sr=SR)
         self.analyser.latency_s = latency_ms / 1000.0
+        self.sr = SR
+        self.taps: list = []          # callables given each mixed block (recording)
         self.sources: dict[str, Source] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -317,6 +319,8 @@ class AudioEngine:
                 if not s.muted:
                     mix[:len(x)] += x * s.gain
             self.analyser.feed(mix, wall=time.monotonic())
+            for tap in list(self.taps):
+                tap(mix)
 
     def state(self, wall: float | None = None):
         return self.analyser.state(wall)

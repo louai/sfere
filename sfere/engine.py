@@ -23,6 +23,7 @@ class Engine:
         self.preview = None            # latest downscaled frame (BGR, 320x180)
         self.preview_mask = None
         self.last_full_frame = None
+        self.recording = None          # a Recording that wants camera frames, or None
         self._lock = threading.Lock()
         self.controls = None
 
@@ -54,6 +55,9 @@ class Engine:
         self.preview = self.tracker.small
         self.preview_mask = self.tracker.mask
         self.last_full_frame = frame
+        rec = self.recording
+        if rec is not None:            # as the Camera tab shows it, so a replay looks the same
+            rec.push_camera(frame[:, ::-1] if self.mirror else frame)
 
     def ball(self, t: float | None = None) -> BallState:
         with self._lock:

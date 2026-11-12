@@ -47,6 +47,19 @@ DEFAULTS: dict = {
         "flip_x": False,
         "flip_y": False,
     },
+    "recording": {
+        "folder": "~/Videos/sfere",
+        "output": True,       # the output, with the music
+        "camera": True,       # the camera, plus the music as a WAV, to replay a session
+        "height": 1080,       # output recording height; 0 = the render size
+        "fps": 30,
+    },
+    "virtual_camera": {
+        "enabled": False,
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+    },
     "ui": {
         # auto = on when a touch screen is connected: larger controls, finger scrolling, and
         # XWayland so touches reach the window (sfere/touch.py)
