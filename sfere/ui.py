@@ -291,6 +291,8 @@ class Panels:
         if app.fullscreen_monitor and im.button("Back to a window (Esc)"):
             app.set_fullscreen(None)
         out = app.settings["output"]
+        _, out["start_on_external"] = im.checkbox("Go fullscreen on an external display at start and when one is plugged in",
+                                                  bool(out.get("start_on_external", True)))
         ch, out["render_scale"] = im.slider_float("Render scale", float(out.get("render_scale", 1.0)), 0.5, 1.0)
         if ch:
             app._resize_at = time.monotonic()

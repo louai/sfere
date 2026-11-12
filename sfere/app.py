@@ -101,8 +101,17 @@ class App:
         self.scenes.cam_aspect = self.settings["camera"]["width"] / self.settings["camera"]["height"]
         from . import ui
         self.panels = ui.Panels(self)
-        if out.get("mode") == "fullscreen" and out.get("monitor"):
-            self.set_fullscreen(out["monitor"])
+        self._monitors_changed = False
+        glfw.set_monitor_callback(lambda m, event: setattr(self, "_monitors_changed", True))
+        # Applied once the window is on screen: asked for earlier, GNOME puts it fullscreen
+        # on the display it first appeared on, whatever monitor was requested.
+        names = [self.monitor_name(m) for m in self.monitors()]
+        self._start_fullscreen = None
+        if out.get("mode") == "fullscreen" and out.get("monitor") in names:
+            self._start_fullscreen = out["monitor"]
+        elif out.get("start_on_external", True) and self.external_monitors():
+            self._start_fullscreen = self.preferred_monitor()
+        self._frame_count = 0
 
     # ------------------------------------------------------------------ windows
     def monitors(self) -> list:
@@ -135,15 +144,30 @@ class App:
         self.fullscreen_monitor = name
         self.settings["output"].update(mode="fullscreen", monitor=name)
 
+    def external_monitors(self) -> list[str]:
+        """Connected displays other than a laptop's built-in panel. GLFW's monitor order is the
+        compositor's, so it says nothing about which is external; the connector name does."""
+        return [n for n in map(self.monitor_name, self.monitors()) if not n.startswith(("eDP", "LVDS", "DSI"))]
+
     def preferred_monitor(self) -> str | None:
-        """Where F goes fullscreen: an external display (projector) whenever one is connected,
-        the saved one if there are several; the built-in panel only when it's the only screen.
-        GLFW's monitor order is the compositor's, so it says nothing about which is external."""
+        """Where the output goes fullscreen by default: an external display (projector) whenever
+        one is connected, the saved one if there are several; the built-in panel only when it's
+        the only screen."""
         names = [self.monitor_name(m) for m in self.monitors()]
-        external = [n for n in names if not n.startswith(("eDP", "LVDS", "DSI"))]
         want = self.settings["output"].get("monitor")
-        pool = external or names
+        pool = self.external_monitors() or names
         return want if want in pool else (pool[0] if pool else None)
+
+    def _handle_monitor_change(self) -> None:
+        """Hot-plug: a newly connected external display takes the output; if the display the
+        output was fullscreen on goes away, fall back to a window."""
+        self._monitors_changed = False
+        names = [self.monitor_name(m) for m in self.monitors()]
+        if self.fullscreen_monitor and self.fullscreen_monitor not in names:
+            self.set_fullscreen(None)
+        if not self.fullscreen_monitor and self.settings["output"].get("start_on_external", True) \
+                and self.external_monitors():
+            self.set_fullscreen(self.preferred_monitor())
 
     def next_monitor(self) -> None:
         mons = [self.monitor_name(m) for m in self.monitors()]
@@ -290,6 +314,11 @@ class App:
         if glfw.window_should_close(self.out_win) or glfw.window_should_close(self.ctl_win):
             return False
         glfw.poll_events()
+        if self._monitors_changed:
+            self._handle_monitor_change()
+        self._frame_count += 1
+        if self._start_fullscreen and self._frame_count == 3:
+            self.set_fullscreen(self._start_fullscreen)
         now = time.monotonic()
         dt = min(0.1, max(1e-4, now - self._last))
         self._last = now

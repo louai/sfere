@@ -14,7 +14,7 @@ To add sfere to the app drawer, run `tools/install_desktop.sh` once.
 
 The first start compiles a tiny compatibility library for Dear ImGui on Wayland, so it needs a C compiler (`cc`).
 
-Two windows open:
+Two windows open. If an external display is connected, the output goes fullscreen on it (and on one plugged in later); turn this off in the Output tab.
 - **control:** calibration, audio sources, scenes, output settings;
 - **output:** the visuals.
 
