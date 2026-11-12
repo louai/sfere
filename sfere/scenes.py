@@ -6,7 +6,9 @@ Point parameters (ISF point2D) follow the ball automatically unless bound otherw
 """
 from __future__ import annotations
 
+import contextlib
 import copy
+import functools
 import math
 import time
 
@@ -277,9 +279,21 @@ class Scene:
         self.pipeline.release()
 
 
+def _in_output_context(method):
+    """Run with the output window's GL context current. Framebuffers and vertex arrays belong
+    to the context that creates them (unlike textures, buffers and programs, which the two
+    windows share), and scenes are switched from the control window's input handling."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kw):
+        with self.gl_current():
+            return method(self, *args, **kw)
+    return wrapper
+
+
 class SceneManager:
     def __init__(self, gl: GL, size: tuple[int, int], presets: list[dict] | None = None):
         self.gl = gl
+        self.gl_current = contextlib.nullcontext   # the app makes the output context current
         self.size = size
         self.presets = copy.deepcopy(presets or PRESETS)
         self.shader_index = discover()
@@ -303,6 +317,7 @@ class SceneManager:
     def names(self) -> list[str]:
         return [p["name"] for p in self.presets]
 
+    @_in_output_context
     def select(self, index_or_name, immediate: bool = False) -> None:
         idx = index_or_name if isinstance(index_or_name, int) else self.names.index(index_or_name)
         idx = max(0, min(idx, len(self.presets) - 1))
@@ -318,12 +333,14 @@ class SceneManager:
         self.current = new
         self.fade = 1.0 if immediate else 0.0
 
+    @_in_output_context
     def add_layer(self, key: str) -> bool:
         ok = self.current.add_layer(key, self.shader_index)
         self.messages += self.current.errors[-1:] if not ok else []
         self._keep_layers()
         return ok
 
+    @_in_output_context
     def remove_layer(self, i: int) -> None:
         self.current.remove_layer(i)
         self._keep_layers()
@@ -333,6 +350,7 @@ class SceneManager:
         idx = self.names.index(self.current.name)
         self.presets[idx]["layers"] = copy.deepcopy(self.current.spec["layers"])
 
+    @_in_output_context
     def resize(self, size: tuple[int, int]) -> None:
         if size == self.size:
             return

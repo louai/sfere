@@ -1,6 +1,7 @@
 """The sfere application: output window + control window, main loop, hotkeys (PLAN.md §2, §5.3, §5.4)."""
 from __future__ import annotations
 
+import contextlib
 import time
 from pathlib import Path
 
@@ -76,6 +77,7 @@ class App:
         edited = self.settings.get("scene_layers", {})
         presets = [{**p, "layers": edited[p["name"]]} if p["name"] in edited else p for p in PRESETS]
         self.scenes = SceneManager(self.gl, self.render_size, presets)
+        self.scenes.gl_current = self.output_context
         out = self.settings["output"]
         self.scenes.aspect_mode = out.get("aspect", "fit")
         self.scenes.flip = (-1.0 if out.get("flip_x") else 1.0, -1.0 if out.get("flip_y") else 1.0)
@@ -118,6 +120,18 @@ class App:
         elif out.get("start_on_external", True) and self.external_monitors():
             self._start_fullscreen = self.preferred_monitor()
         self._frame_count = 0
+
+    @contextlib.contextmanager
+    def output_context(self):
+        """Make the output window's GL context current, then put back whichever was."""
+        g = self.glfw
+        prev = g.get_current_context()
+        g.make_context_current(self.out_win)
+        try:
+            yield
+        finally:
+            if prev:
+                g.make_context_current(prev)
 
     # ------------------------------------------------------------------ windows
     def monitors(self) -> list:

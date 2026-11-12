@@ -3,7 +3,7 @@
   .venv/bin/python tools/check_app.py [--monitor DP-3] [--out out/check]
 
 Checks: fullscreen on a chosen monitor and back, live resize of the output window,
-every scene and every control tab renders, frame rate. It briefly takes over the
+every scene renders (not black) after switching to it, every control tab draws, frame rate. It briefly takes over the
 chosen monitor.
 """
 from __future__ import annotations
@@ -91,12 +91,16 @@ def main():
         g.set_window_size(app.out_win, 1280, 720)
         run_for(app, 1.0)
         for i, name in enumerate(app.scenes.names):
-            app.scenes.select(i, immediate=True)
-            fps = run_for(app, 2.0)
+            # switched between frames, like a key or a button in the control window, with a crossfade
+            app.select_scene(i)
+            fps = run_for(app, app.scenes.fade_time + 1.0)
             shot_output(app, out / f"scene_{i}_{name.replace(' ', '_')}.png")
-            results.append(f"scene {name}: {fps:.1f} fps, scene {app.scenes.last_frame_ms:.2f} ms, "
-                           f"errors {app.scenes.current.errors}")
-        for tab in ("Camera", "Audio", "Scenes", "Output", "Debug"):
+            rgb = np.frombuffer(app.last_tex.read(), np.uint8).reshape(-1, 4)[:, :3]
+            # a scene built in the wrong GL context draws nothing at all
+            drawn = rgb.max() > 0 or not app.last_ball.visible
+            results.append(f"scene {name}: {'OK' if drawn else 'FAIL (black)'} {fps:.1f} fps, scene "
+                           f"{app.scenes.last_frame_ms:.2f} ms, brightest {rgb.max()}, errors {app.scenes.current.errors}")
+        for tab in ("Camera", "Audio", "Scenes", "Output", "Debug", "Help"):
             app.panels.show_tab(tab)
             run_for(app, 0.3)
             shot_control(app, out / f"control_{tab}.png")
