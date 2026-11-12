@@ -13,6 +13,7 @@ from .compat import load_gui
 from .engine import Engine
 from .render.gl import GL, attach_current_context
 from .scenes import PRESETS, SceneManager
+from .touch import touch_mode, touchscreen_present, wants_xwayland
 
 OUTPUT_FS = """#version 330
 uniform sampler2D src;
@@ -42,7 +43,11 @@ class App:
         self.settings = settings_mod.load()
         if args.scene:
             self.settings["scene"] = args.scene
-        self.glfw, self.imgui = load_gui(force_x11=args.x11)
+        touch = getattr(args, "touch", None) or self.settings["ui"].get("touch", "auto")
+        self.touchscreen = touchscreen_present()
+        self.touch = touch_mode(touch, self.touchscreen)
+        self.x11 = args.x11 or wants_xwayland(touch, self.touchscreen)
+        self.glfw, self.imgui = load_gui(force_x11=self.x11)
         glfw = self.glfw
         if not glfw.init():
             raise SystemExit("GLFW could not initialise a display")
@@ -65,6 +70,7 @@ class App:
         self.ctx = attach_current_context()
         glfw.swap_interval(0)    # Wayland composites tear-free; pacing is ours
         self.gl = GL(self.ctx)
+        self.fullscreen_monitor = None
         self.p_out = self.gl.program(OUTPUT_FS)
         self.render_size = self._native_render_size()
         edited = self.settings.get("scene_layers", {})
@@ -89,7 +95,6 @@ class App:
         self._preview = {}       # glo -> external texture in the UI context
         self.debug = False
         self.freeze = False
-        self.fullscreen_monitor = None
         self.windowed_size = (1280, 720)
         self.last_tex = None
         self.taps: list[float] = []
@@ -197,6 +202,10 @@ class App:
             return int(out["render_width"]), int(out["render_height"])
         fw, fh = self.glfw.get_framebuffer_size(self.out_win)
         s = float(out.get("render_scale", 1.0))
+        if self.x11 and self.fullscreen_monitor:
+            # XWayland fullscreen is in device pixels; render at the display's scaled resolution
+            # like a Wayland fullscreen window, so a 2x display doesn't cost four times the GPU time
+            s /= max(1.0, self.glfw.get_window_content_scale(self.out_win)[0])
         return max(64, int(fw * s)), max(64, int(fh * s))
 
     # ------------------------------------------------------------------ hotkeys
@@ -208,10 +217,7 @@ class App:
         if key == g.KEY_F and shift:
             self.next_monitor()
         elif key == g.KEY_F:
-            if self.fullscreen_monitor:
-                self.set_fullscreen(None)
-            else:
-                self.set_fullscreen(self.preferred_monitor())
+            self.toggle_fullscreen()
         elif key == g.KEY_ESCAPE and self.fullscreen_monitor:
             self.set_fullscreen(None)
         elif key == g.KEY_Q and mods & g.MOD_CONTROL:
@@ -223,16 +229,25 @@ class App:
         elif key == g.KEY_M:
             self.engine.mirror = not self.engine.mirror
         elif key == g.KEY_B:
-            self.scenes.blackout_target = 0.0 if self.scenes.blackout_target > 0.5 else 1.0
+            self.toggle_blackout()
         elif key == g.KEY_T:
             self.tap_tempo()
         elif key == g.KEY_SPACE:
             self.freeze = not self.freeze
         elif g.KEY_1 <= key <= g.KEY_9:
-            i = key - g.KEY_1
-            if i < len(self.scenes.names):
-                self.scenes.select(i)
-                self.settings["scene"] = self.scenes.names[i]
+            self.select_scene(key - g.KEY_1)
+
+    # ------------------------------------------------------------------ actions (keys and toolbar)
+    def toggle_fullscreen(self):
+        self.set_fullscreen(None if self.fullscreen_monitor else self.preferred_monitor())
+
+    def toggle_blackout(self):
+        self.scenes.blackout_target = 0.0 if self.scenes.blackout_target > 0.5 else 1.0
+
+    def select_scene(self, i: int):
+        if 0 <= i < len(self.scenes.names):
+            self.scenes.select(i)
+            self.settings["scene"] = self.scenes.names[i]
 
     def tap_tempo(self):
         now = time.monotonic()

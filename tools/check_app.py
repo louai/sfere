@@ -51,10 +51,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--monitor", default="DP-3")
     ap.add_argument("--out", default="out/check")
+    ap.add_argument("--touch", default="off", choices=["auto", "on", "off"],
+                    help="touch mode; auto/on run through XWayland when a touch screen is connected")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    args = argparse.Namespace(video=SAMPLE_B, audio_file=MUSIC, audio=None, mute=True, scene=None, x11=False,
+    args = argparse.Namespace(video=SAMPLE_B, audio_file=MUSIC, audio=None, mute=True, scene=None, x11=False, touch=a.touch,
                               capture=None, capture_every=2.0, duration=None, no_save=True)
     app = App(args)
     app.start_clock()

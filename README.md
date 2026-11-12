@@ -1,6 +1,6 @@
 # sfere
 
-sfere tracks a glowing contact-juggling ball with a webcam and renders music-reactive visuals around it. It listens to audio from other applications and to inputs such as microphones and line-in. The camera is used only for tracking; the output is entirely rendered graphics. See [PLAN.md](PLAN.md) for the design, the research and the current status.
+sfere tracks a glowing contact-juggling ball with a webcam and renders music-reactive visuals around it. It listens to audio from other applications and to inputs such as microphones and line-in. The camera is used only for tracking; the output is entirely rendered graphics. **[The guide](docs/guide.md)** explains setup, every control, touch screens and shaders; the same text is in the control window's Help tab. See [PLAN.md](PLAN.md) for the design, the research and the current status.
 
 ## Run
 
@@ -18,7 +18,9 @@ Two windows open. If an external display is connected, the output goes fullscree
 - **control:** calibration, audio sources, scenes, output settings;
 - **output:** the visuals.
 
-Click the ball in the Camera tab to calibrate its color. Right-drag in the same view to exclude a reflection. Settings are saved in `~/.config/sfere/settings.toml`.
+Click or tap the ball in the Camera tab to calibrate its color. Drag a box in the same view to exclude a reflection.
+
+With a touch screen connected, the control window switches to large controls and finger scrolling, and sfere runs through XWayland so touches reach it (`--touch off` or the Output tab turns this off). Settings are saved in `~/.config/sfere/settings.toml`.
 
 | Key | Action |
 |---|---|

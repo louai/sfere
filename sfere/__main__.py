@@ -3,6 +3,7 @@
   sfere                                   webcam + audio from other apps (default output monitor)
   sfere --video sample.mp4 --audio-file music.wav   development with recordings
   sfere --audio @DEFAULT_MONITOR@ --audio alsa_input...   choose audio sources (repeatable)
+  sfere --touch off                       mouse-sized controls on a touch-screen laptop
   sfere --capture out/run --duration 20   save output/control screenshots every few seconds, then exit
 """
 from __future__ import annotations
@@ -18,6 +19,8 @@ def main(argv=None):
     p.add_argument("--mute", action="store_true", help="analyse --audio-file without playing it")
     p.add_argument("--scene", help="start with this scene")
     p.add_argument("--x11", action="store_true", help="run through XWayland (exact window placement)")
+    p.add_argument("--touch", choices=["auto", "on", "off"],
+                   help="touch-friendly controls; auto (default) = when a touch screen is connected")
     p.add_argument("--capture", help="directory for periodic output/control screenshots (testing)")
     p.add_argument("--capture-every", type=float, default=2.0)
     p.add_argument("--duration", type=float, help="exit after this many seconds")

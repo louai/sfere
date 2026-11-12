@@ -47,6 +47,11 @@ DEFAULTS: dict = {
         "flip_x": False,
         "flip_y": False,
     },
+    "ui": {
+        # auto = on when a touch screen is connected: larger controls, finger scrolling, and
+        # XWayland so touches reach the window (sfere/touch.py)
+        "touch": "auto",      # auto | on | off
+    },
     "scene": "Rave",
 }
 

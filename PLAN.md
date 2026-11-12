@@ -25,6 +25,7 @@ sfere takes a live webcam feed of someone dancing with a glowing contact-jugglin
 - **Tempo is refined to sub-frame precision** (parabolic peak fits at 1–4 beats). At 48 kHz, plain interpolation had biased it to 122.25.
 - **The kaleidoscope folds around the ball**, not the screen center, so the ball is always in the image.
 - **This laptop's digital mic delivers a constant −1.0 signal**: muted or misconfigured at the system level. sfere detects such a stuck source, reports it, and mixes silence in its place.
+- **Touch screens need XWayland.** GLFW's Wayland backend ignores touch events, so with a touch screen connected sfere runs through XWayland, which turns touches into pointer events. The control window then switches to touch mode: larger controls, finger scrolling, buttons for every show shortcut (`sfere/touch.py`, the Output tab, `--touch`). Under XWayland the UI is scaled by the monitor's content scale, and fullscreen renders at the display's scaled resolution, as it does on Wayland. The user guide is `docs/guide.md`, also shown in the Help tab.
 - **Not done yet (M5):** NDI and virtual-camera outputs, OSC, Identify, borderless mode, and the test with a live performer in a dim room.
 
 ---

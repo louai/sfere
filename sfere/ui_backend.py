@@ -7,6 +7,8 @@ ImGui 1.92's dynamic-texture protocol (RendererHasTextures).
 from __future__ import annotations
 
 import ctypes
+import shutil
+import subprocess
 
 import moderngl
 import numpy as np
@@ -29,6 +31,18 @@ void main() { color = col * texture(tex, uv); }
 """
 
 
+def _system_font() -> str | None:
+    """A sans-serif font file with the dashes, arrows and math signs sfere's labels use, or None."""
+    if not shutil.which("fc-match"):
+        return None
+    try:
+        path = subprocess.run(["fc-match", "-f", "%{file}", "sans-serif:style=Regular:charset=2014 2190 2192 2265 2026"],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return path if path.endswith((".ttf", ".otf")) else None
+
+
 class ImguiGlfw:
     def __init__(self, glfw, imgui, window, ctx: moderngl.Context):
         self.glfw, self.imgui, self.window, self.ctx = glfw, imgui, window, ctx
@@ -36,6 +50,14 @@ class ImguiGlfw:
         self.io = imgui.get_io()
         self.io.config_flags |= imgui.ConfigFlags_.nav_enable_keyboard
         self.io.set_ini_filename("")
+        # the scalable build of the default font stays sharp at touch and HiDPI sizes; a system
+        # font fills in the characters it lacks (—, ≥, …)
+        self.io.fonts.add_font_default_vector()
+        fallback = _system_font()
+        if fallback:
+            cfg = imgui.ImFontConfig()
+            cfg.merge_mode = True
+            self.io.fonts.add_font_from_file_ttf(fallback, 0.0, cfg)
         self.io.backend_flags |= imgui.BackendFlags_.renderer_has_textures
         pio = imgui.get_platform_io()
         mx = ctx.info["GL_MAX_TEXTURE_SIZE"]

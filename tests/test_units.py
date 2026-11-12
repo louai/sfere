@@ -82,3 +82,34 @@ def test_shader_hot_reload(tmp_path):
     assert "error" in msgs[0]  # broken save: reported, scene keeps running
     s.release()
     ctx.release()
+
+
+def test_touchscreen_detection_and_backend(tmp_path):
+    from sfere.touch import touch_mode, touchscreen_present, wants_xwayland
+    (tmp_path / "c13:65").write_text("E:ID_INPUT=1\nE:ID_INPUT_TOUCHPAD=1\n")
+    assert not touchscreen_present(tmp_path)
+    (tmp_path / "c13:72").write_text("E:ID_INPUT=1\nE:ID_INPUT_TOUCHSCREEN=1\n")
+    assert touchscreen_present(tmp_path)
+    assert not touchscreen_present(tmp_path / "missing")
+    assert touch_mode("auto", True) and not touch_mode("auto", False)
+    assert touch_mode("on", False) and not touch_mode("off", True)
+    wayland = {"WAYLAND_DISPLAY": "wayland-0"}
+    assert wants_xwayland("auto", True, wayland)
+    assert not wants_xwayland("off", True, wayland)
+    assert not wants_xwayland("on", False, wayland)     # large controls only: nothing to route
+    assert not wants_xwayland("auto", True, {})          # already on X11
+
+
+def test_guide_renders_in_help_tab():
+    from sfere.ui import GUIDE, TABS, parse_markdown
+    blocks = parse_markdown(GUIDE.read_text())
+    headings = [b[2] for b in blocks if b[0] == "h"]
+    assert headings[0] == "sfere guide" and "Using a touch screen" in headings
+    items = [b for b in blocks if b[0] == "li"]
+    assert any(b[1] == 1 for b in items)                              # nested list
+    assert any(b[2].startswith("1. ") for b in items)                 # numbered steps keep numbers
+    keys = next(b[1] for b in blocks if b[0] == "table" and b[1][0] == ["Key", "Action"])
+    assert ["Ctrl+Q", "Quit"] in keys
+    text = " ".join(str(b) for b in blocks)
+    assert "**" not in text and "](" not in text
+    assert all(t in text for t in TABS)
