@@ -1,0 +1,3 @@
+# Defaults for every shader in this folder; a <name>.toml next to a shader overrides them.
+license = "MIT (Vidvox ISF-Files)"
+source = "github.com/Vidvox/ISF-Files @ 395072d"

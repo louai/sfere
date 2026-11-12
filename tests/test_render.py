@@ -137,7 +137,11 @@ def _seed_prev(gl, pl):
         t.tex.write(stripes.astype(np.float16).tobytes())
 
 
-@pytest.mark.parametrize("key", sorted(discover()))
+OWN = sorted(k for k in discover() if "/" not in k)            # written for sfere
+PACKS = sorted(k for k in discover() if "/" in k)              # downloaded collections
+
+
+@pytest.mark.parametrize("key", OWN)
 def test_shader_follows_ball_and_beat(gl, key):
     cls, path = discover()[key]
     eff = cls(gl, path)
@@ -167,6 +171,46 @@ def test_shader_follows_ball_and_beat(gl, key):
     assert left.mean() > 0.001, "draws nothing"
     assert lhalf(left) > rhalf(left) and rhalf(right) > lhalf(right), "does not follow the ball"
     assert loud.mean() > left.mean() * 1.05, "does not react to uBeat"
+
+
+def test_downloaded_shaders_load_and_draw(gl):
+    """Every shader in a downloaded pack compiles, carries a license and draws something."""
+    assert len(PACKS) >= 190
+    bad = []
+    for key in PACKS:
+        cls, path = discover()[key]
+        eff = cls(gl, path)
+        if eff.error or eff.unsupported or "no license info" in eff.license_line():
+            bad.append(f"{key}: {eff.error or eff.unsupported or 'no license'}")
+            continue
+        pl = Pipeline(gl, (320, 180))
+        _seed_prev(gl, pl)
+        for i in range(20):  # delay-buffer filters need a few frames to fill
+            f = _frame(gl, pl, (0.3 + 0.01 * i, 0.6), 0.5)
+            pl.begin_layer(); eff.update(f); eff.draw(f)
+        img = read(pl.direct.tex)
+        if not (np.isfinite(img).all() and img.mean() > 0.002):
+            bad.append(f"{key}: draws nothing")
+        eff.release(); pl.release()
+    assert not bad, bad
+
+
+def test_scene_layers_add_and_remove(gl):
+    mgr = SceneManager(gl, (320, 180))
+    mgr.select("Rave", immediate=True)
+    n = len(mgr.current.layers)
+    bound = {b.target for b in mgr.current.bindings if b.target[:1].isdigit()}
+    assert mgr.add_layer("isf:vidvox/Bad TV") and len(mgr.current.layers) == n + 1
+    assert not mgr.add_layer("isf:nope")
+    mgr.remove_layer(0)   # bindings to later layers move down with them
+    assert {b.target for b in mgr.current.bindings if b.target[:1].isdigit()} == \
+        {f"{int(t.split(':')[0]) - 1}:{t.split(':')[1]}" for t in bound if not t.startswith("0:")}
+    for t in range(3):
+        mgr.render(t / 60, 1 / 60, ball_at(t / 60), audio_at(t / 60))
+    mgr.select("Museum", immediate=True)
+    mgr.select("Rave", immediate=True)    # edits are kept with the preset
+    assert [getattr(e, "key", None) for e in mgr.current.layers][-1] == "isf:vidvox/Bad TV"
+    assert len(mgr.current.layers) == n
 
 
 def test_broken_shader_reports_error(gl, tmp_path):

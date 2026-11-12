@@ -39,7 +39,9 @@ Drop shader files in and they load live; saving a file reloads it.
 - `effects/shadertoy/*.glsl`: the Image pass. Optional `name.buffer_a.glsl`…`buffer_d.glsl` files add Buffers A–D.
 - `effects/isf/*.fs`: ISF shaders. sfere builds controls from their JSON header.
 
-An optional `name.toml` next to a shader records its `title`, `author`, `license` and `source`, and can set `gain`, `resolution`, `[params]` and `[channels]`.
+Subfolders work too. `effects/isf/vidvox/` holds 197 shaders from Vidvox's MIT-licensed ISF collection; most are filters that process the layers below them. To add any effect to the current scene, use **Add a layer** in the Scenes tab. Edited scenes are saved, and **Reset layers to the preset** undoes the edits.
+
+An optional `pack.toml` in a folder sets defaults for every shader in it. An optional `name.toml` next to a shader records its `title`, `author`, `license` and `source`, and can set `gain`, `resolution`, `[params]` and `[channels]`.
 
 Every shader also receives sfere's uniforms:
 - `uBall` (x, y, radius, visible);

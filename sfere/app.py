@@ -12,7 +12,7 @@ from . import settings as settings_mod
 from .compat import load_gui
 from .engine import Engine
 from .render.gl import GL, attach_current_context
-from .scenes import SceneManager
+from .scenes import PRESETS, SceneManager
 
 OUTPUT_FS = """#version 330
 uniform sampler2D src;
@@ -67,7 +67,9 @@ class App:
         self.gl = GL(self.ctx)
         self.p_out = self.gl.program(OUTPUT_FS)
         self.render_size = self._native_render_size()
-        self.scenes = SceneManager(self.gl, self.render_size)
+        edited = self.settings.get("scene_layers", {})
+        presets = [{**p, "layers": edited[p["name"]]} if p["name"] in edited else p for p in PRESETS]
+        self.scenes = SceneManager(self.gl, self.render_size, presets)
         out = self.settings["output"]
         self.scenes.aspect_mode = out.get("aspect", "fit")
         self.scenes.flip = (-1.0 if out.get("flip_x") else 1.0, -1.0 if out.get("flip_y") else 1.0)
@@ -350,6 +352,8 @@ class App:
                 s["audio"]["gains"] = {k: v.gain for k, v in self.engine.audio.sources.items() if v.kind != "file"}
             if self.args.video is None:
                 s["camera"]["mirror"] = self.engine.mirror
+            s["scene_layers"] = {p["name"]: p["layers"] for p, orig in zip(self.scenes.presets, PRESETS)
+                                 if p["layers"] != orig["layers"]}
             s["output"]["aspect"] = self.scenes.aspect_mode
             s["output"]["flip_x"], s["output"]["flip_y"] = self.scenes.flip[0] < 0, self.scenes.flip[1] < 0
             if not self.args.no_save:

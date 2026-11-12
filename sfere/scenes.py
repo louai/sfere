@@ -198,6 +198,31 @@ class Scene:
             self.errors.append(f"{key}: {e}")
         return None
 
+    def add_layer(self, key: str, shader_index: dict) -> bool:
+        layer = {"effect": key}
+        eff = self._make(layer, shader_index)
+        if eff is None:
+            return False
+        self.layers.append(eff)
+        self.spec.setdefault("layers", []).append(layer)
+        return True
+
+    def remove_layer(self, i: int) -> None:
+        """Drop layer i; bindings to later layers ('<index>:<param>') move down with them."""
+        self.layers.pop(i).release()
+        del self.spec["layers"][i]
+        kept = []
+        for b in self.bindings:
+            head, sep, param = b.target.partition(":")
+            if sep and head.isdigit():
+                j = int(head)
+                if j == i:
+                    continue
+                if j > i:
+                    b.target = f"{j - 1}:{param}"
+            kept.append(b)
+        self.bindings = kept
+
     def reload_changed(self, shader_index: dict) -> list[str]:
         """Hot reload: rebuild shader layers whose files changed, keeping their values."""
         reloaded = []
@@ -256,7 +281,7 @@ class SceneManager:
     def __init__(self, gl: GL, size: tuple[int, int], presets: list[dict] | None = None):
         self.gl = gl
         self.size = size
-        self.presets = presets or PRESETS
+        self.presets = copy.deepcopy(presets or PRESETS)
         self.shader_index = discover()
         self.current: Scene | None = None
         self.previous: Scene | None = None
@@ -292,6 +317,21 @@ class SceneManager:
             self.current.release()
         self.current = new
         self.fade = 1.0 if immediate else 0.0
+
+    def add_layer(self, key: str) -> bool:
+        ok = self.current.add_layer(key, self.shader_index)
+        self.messages += self.current.errors[-1:] if not ok else []
+        self._keep_layers()
+        return ok
+
+    def remove_layer(self, i: int) -> None:
+        self.current.remove_layer(i)
+        self._keep_layers()
+
+    def _keep_layers(self):
+        """Edits stay with the preset, so selecting the scene again rebuilds it as edited."""
+        idx = self.names.index(self.current.name)
+        self.presets[idx]["layers"] = copy.deepcopy(self.current.spec["layers"])
 
     def resize(self, size: tuple[int, int]) -> None:
         if size == self.size:

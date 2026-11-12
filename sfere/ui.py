@@ -1,11 +1,14 @@
 """Control-window panels (Dear ImGui): camera & calibration, audio sources, scenes, output, debug."""
 from __future__ import annotations
 
+import copy
 import time
 
 from .audio.sources import DEFAULT_MONITOR, FileSource, list_sources
 from .camera import camera_controls_from_settings
+from .fx.builtin import BUILTIN
 from .fx.shaders import ShaderEffect
+from .scenes import PRESETS
 
 TABS = ["Camera", "Audio", "Scenes", "Output", "Debug"]
 
@@ -22,6 +25,7 @@ class Panels:
         self.sources_at = 0.0
         self.calib_msg = ""
         self.file_path = ""
+        self.layer_search = ""
         self.ranges = app.engine.controls.ranges() if app.engine.controls else {}
 
     # ---------------------------------------------------------------- layout
@@ -215,9 +219,12 @@ class Panels:
             lo, hi = {"decay": (0, 0.995), "zoom": (0.97, 1.03), "rotate": (-1, 1), "hue_shift": (-1, 1),
                       "kaleido": (0, 12), "kaleido_spin": (-1, 1), "exposure": (0.2, 3), "bloom": (0, 3)}.get(k, (0, 1))
             _, scene.post[k] = im.slider_float(f"{k}##post", float(scene.post.get(k, DEFAULT_POST[k])), lo, hi)
+        remove = None
         for li, eff in enumerate(scene.layers):
             label = f"{li + 1}. {getattr(eff, 'key', eff.name)}"
             if im.collapsing_header(f"{label}##layer{li}"):
+                if im.small_button(f"Remove layer##rm{li}"):
+                    remove = li
                 if isinstance(eff, ShaderEffect):
                     im.text_disabled(eff.license_line())
                     if eff.error:
@@ -245,10 +252,31 @@ class Panels:
                         _, eff.values[k] = im.slider_float(tag, float(v), float(p.lo), float(p.hi))
                     if p.help and im.is_item_hovered():
                         im.set_tooltip(p.help)
+        if remove is not None:
+            mgr.remove_layer(remove)
+            return
+        self._add_layer(mgr)
         if scene.bindings:
             im.separator_text("Bindings")
             for b in scene.bindings:
                 im.text(f"{b.target} ← {b.source}  ({b.lo:g} … {b.hi:g})  now {b.value or 0:.2f}")
+
+    def _add_layer(self, mgr):
+        im = self.imgui
+        im.separator_text("Add a layer")
+        _, self.layer_search = im.input_text("Search##addlayer", self.layer_search)
+        q = self.layer_search.lower()
+        keys = [k for k in sorted(BUILTIN) + sorted(mgr.shader_index) if q in k.lower()]
+        im.text_disabled(f"{len(keys)} effects. Click to add on top; filters process the layers above them.")
+        if im.begin_list_box("##addlist", (-1, 200)):
+            for k in keys:
+                if im.selectable(k, False)[0]:
+                    mgr.add_layer(k)
+            im.end_list_box()
+        idx = mgr.names.index(mgr.current.name)
+        if mgr.presets[idx]["layers"] != PRESETS[idx]["layers"] and im.button("Reset layers to the preset"):
+            mgr.presets[idx]["layers"] = copy.deepcopy(PRESETS[idx]["layers"])
+            mgr.select(idx, immediate=True)
 
     # ---------------------------------------------------------------- output
     def tab_output(self):

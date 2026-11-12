@@ -1,6 +1,6 @@
 """Shadertoy and ISF shaders as effect layers (PLAN.md §5.5).
 
-Drop files into effects/shadertoy/*.glsl or effects/isf/*.fs. Each loaded shader also
+Drop files into effects/shadertoy/*.glsl or effects/isf/*.fs (subfolders too). Each loaded shader also
 gets sfere's uniforms: uBall (x, y, radius, visible in 0..1 output uv), uBallVel, uSub,
 uBass, uMid, uHigh, uLevel, uBeat, uBeatPhase, uBpm, uPrevFrame. Shadertoy's iMouse and
 ISF point2D inputs follow the ball. A shader that fails to compile shows its error and
@@ -8,6 +8,7 @@ draws nothing; the show keeps running.
 
 Sidecar <name>.toml (optional): title, author, source, license, [params] for extra
 uniforms (Shadertoy), [channels] for iChannel bindings, gain, resolution scale.
+A pack.toml in a folder gives defaults (license, source) for every shader in it.
 """
 from __future__ import annotations
 
@@ -49,13 +50,14 @@ void main() { color = vec4(max(texture(src, uv).rgb, 0.0) * gain, 1.0); }
 
 
 def _sidecar(path: Path) -> dict:
-    side = path.with_suffix(".toml")
-    if side.exists():
-        try:
-            return tomllib.loads(side.read_text())
-        except tomllib.TOMLDecodeError as e:
-            return {"_error": f"{side.name}: {e}"}
-    return {}
+    out = {}
+    for side in (path.parent / "pack.toml", path.with_suffix(".toml")):
+        if side.exists():
+            try:
+                out.update(tomllib.loads(side.read_text()))
+            except tomllib.TOMLDecodeError as e:
+                return {"_error": f"{side.name}: {e}"}
+    return out
 
 
 class ShaderEffect(Effect):
@@ -307,6 +309,8 @@ class ISFEffect(ShaderEffect):
             self.isf = {"INPUTS": []}
             self.error = f"{self.path.name}: {e}"
             return {}
+        if self.isf.get("CREDIT") and "author" not in self.meta:
+            self.meta["author"] = str(self.isf["CREDIT"])
         out = {}
         self.images = []
         for inp in self.isf.get("INPUTS", []):
@@ -410,10 +414,11 @@ class ISFEffect(ShaderEffect):
 
 # ----------------------------------------------------------------------------- discovery
 def discover(root: Path = EFFECTS_DIR) -> dict[str, tuple[type, Path]]:
+    """{"isf:hex_glow": ..., "isf:vidvox/Bloom": ...}: keys are paths relative to the kind's folder."""
     found = {}
-    for p in sorted((root / "shadertoy").glob("*.glsl")):
-        if p.stem.count(".") == 0:  # skip name.buffer_a.glsl / name.common.glsl
-            found[f"shadertoy:{p.stem}"] = (ShadertoyEffect, p)
-    for p in sorted((root / "isf").glob("*.fs")):
-        found[f"isf:{p.stem}"] = (ISFEffect, p)
+    for kind, cls, pattern in (("shadertoy", ShadertoyEffect, "*.glsl"), ("isf", ISFEffect, "*.fs")):
+        base = root / kind
+        for p in sorted(base.rglob(pattern)):
+            if kind == "isf" or "." not in p.stem:  # skip name.buffer_a.glsl / name.common.glsl
+                found[f"{kind}:{p.relative_to(base).with_suffix('').as_posix()}"] = (cls, p)
     return found
