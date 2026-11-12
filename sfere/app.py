@@ -50,6 +50,10 @@ class App:
                         (glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE), (glfw.OPENGL_FORWARD_COMPAT, True)):
             glfw.window_hint(hint, v)
         glfw.window_hint(glfw.SCALE_TO_MONITOR, True)
+        # matches sfere.desktop, so the shell groups both windows under the app's icon
+        glfw.window_hint_string(glfw.WAYLAND_APP_ID, "sfere")
+        glfw.window_hint_string(glfw.X11_CLASS_NAME, "sfere")
+        glfw.window_hint_string(glfw.X11_INSTANCE_NAME, "sfere")
         self.out_win = glfw.create_window(1280, 720, "sfere — output", None, None)
         if not self.out_win:
             raise SystemExit("Could not open the output window")

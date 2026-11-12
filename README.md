@@ -10,6 +10,8 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[test]'
 .venv/bin/python -m sfere --video sample.mp4 --audio-file "sample music v2.wav"   # with recordings
 ```
 
+To add sfere to the app drawer, run `tools/install_desktop.sh` once.
+
 The first start compiles a tiny compatibility library for Dear ImGui on Wayland, so it needs a C compiler (`cc`).
 
 Two windows open:

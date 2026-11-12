@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#1b0f2e"/>
+      <stop offset="1" stop-color="#07050d"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff5a3c" stop-opacity="0.9"/>
+      <stop offset="0.45" stop-color="#ff2d6f" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ff2d6f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ball" cx="42%" cy="38%" r="60%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.25" stop-color="#ffd2a8"/>
+      <stop offset="0.6" stop-color="#ff4a2a"/>
+      <stop offset="1" stop-color="#a3122f"/>
+    </radialGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <path d="M18 92 C 34 60, 52 104, 70 74 S 98 40, 108 30" fill="none" stroke="#7c4dff" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
+  <path d="M22 100 C 40 72, 56 110, 72 84" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <circle cx="74" cy="56" r="40" fill="url(#glow)"/>
+  <circle cx="74" cy="56" r="17" fill="url(#ball)"/>
+</svg>
