@@ -145,3 +145,11 @@ def test_new_built_in_scenes_join_an_existing_library(tmp_path, monkeypatch):
     specs = library.load({})
     library.save([s for s in specs if s["name"] != "Slipstream"])
     assert "Slipstream" not in [s["name"] for s in library.load({})]          # deleting it sticks
+
+
+def test_missing_input_files_are_refused(tmp_path, capsys):
+    from sfere.__main__ import main
+    for argv in (["--video", str(tmp_path / "nope.mp4")], ["--audio-file", str(tmp_path / "nope.wav")]):
+        with pytest.raises(SystemExit) as e:
+            main(argv)
+        assert e.value.code == 2 and "no such file" in capsys.readouterr().err

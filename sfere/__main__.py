@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def main(argv=None):
@@ -32,6 +33,11 @@ def main(argv=None):
     p.add_argument("--duration", type=float, help="exit after this many seconds")
     p.add_argument("--no-save", action="store_true", help="don't write settings on exit")
     args = p.parse_args(argv)
+    for opt, path in (("--video", args.video), ("--audio-file", args.audio_file)):
+        if path and not Path(path).expanduser().is_file():
+            near = sorted(Path(path).expanduser().parent.glob("*"))[-5:] if Path(path).expanduser().parent.is_dir() else []
+            hint = ("\n  files in that folder: " + ", ".join(f.name for f in near)) if near else ""
+            p.error(f"{opt}: no such file: {path}{hint}")
     from .app import App
     App(args).run()
 
