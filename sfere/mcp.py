@@ -96,6 +96,11 @@ TOOLS = [
     ("virtual_camera", "Turn the virtual camera named 'sfere' on or off, or change its size; returns where other apps "
      "find it.", _obj({"on": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}}),
      "virtual_camera"),
+    ("list_videos", "Videos sfere can play instead of the webcam: its own recordings (a camera recording comes "
+     "with its music) and clips in ~/Videos/Camera, numbered.", _obj(), "list_videos"),
+    ("play_video", "Play a video as the input instead of the webcam (number from list_videos, or a path), or "
+     "'webcam' to go back. A sfere camera recording also plays the music recorded with it.",
+     _obj({"video": {"type": ["string", "integer"]}}, ["video"]), "play_video"),
     ("audio", "List the audio sources (other apps' output, mics, line-ins) and which are on; turn one on or off; "
      "set an active source's gain (0–4).",
      _obj({"enable": {"type": "string"}, "disable": {"type": "string"}, "source": {"type": "string"},

@@ -26,22 +26,56 @@ class Engine:
         self.recording = None          # a Recording that wants camera frames, or None
         self._lock = threading.Lock()
         self.controls = None
-
-        source = video or cam["device"]
-        if video is None:
-            self.controls = V4L2Controls(cam["device"])
-            self.controls.set(camera_controls_from_settings(cam))
-        self.capture = CaptureThread(source, self._on_frame, cam["width"], cam["height"], cam["fps"])
-        self.capture.on_loop = self._on_loop
-        self.capture.start()
+        self.video = video                 # the file playing instead of the webcam, or None
+        self.audio_file = audio_file
+        self.play_audio = play_audio
+        self._live_sources = audio_sources  # live audio as started (None: the saved sources)
 
         self.audio = AudioEngine(settings["audio"].get("latency_ms", 0.0))
-        gains = settings["audio"].get("gains", {})
+        self.capture = None
+        self._start_capture(video)
         if audio_file:
             self.audio.play_file(audio_file, play_audio=play_audio)
         else:
-            for sid in audio_sources if audio_sources is not None else settings["audio"].get("sources", [DEFAULT_MONITOR]):
-                self.audio.enable(sid, gains.get(sid, 1.0), kind="system" if "monitor" in sid.lower() else "input")
+            self._enable_live_audio()
+
+    def _start_capture(self, video: str | None):
+        cam = self.settings["camera"]
+        if video is None and self.controls is None:
+            self.controls = V4L2Controls(cam["device"])
+            self.controls.set(camera_controls_from_settings(cam))
+        self.capture = CaptureThread(video or cam["device"], self._on_frame, cam["width"], cam["height"], cam["fps"])
+        self.capture.on_loop = self._on_loop
+        self.capture.start()
+
+    def _enable_live_audio(self):
+        gains = self.settings["audio"].get("gains", {})
+        ids = self._live_sources if self._live_sources is not None \
+            else self.settings["audio"].get("sources", [DEFAULT_MONITOR])
+        for sid in ids:
+            self.audio.enable(sid, gains.get(sid, 1.0), kind="system" if "monitor" in sid.lower() else "input")
+
+    def set_source(self, video: str | None, audio_file: str | None = None) -> None:
+        """Switch the input while running: a video file (with its music, if given) or, with
+        video=None, the webcam and the live audio sources."""
+        self.capture.stop()
+        if self.video is None and video is not None and self.controls:
+            self.controls.restore()           # the webcam goes back to how it was
+            self.controls = None
+        # a recording's music replaces the live audio; otherwise the live audio plays
+        for sid, src in list(self.audio.sources.items()):
+            if src.kind == "file" or audio_file:
+                self.audio.disable(sid)
+        if audio_file:
+            self.audio.play_file(audio_file, play_audio=self.play_audio)
+        elif not self.audio.sources:
+            self._enable_live_audio()
+        self.video, self.audio_file = video, audio_file
+        self.mirror = bool(self.settings["camera"].get("mirror", True)) and video is None
+        with self._lock:
+            self.filter = BallFilter()
+        self.preview = self.preview_mask = self.last_full_frame = None
+        self._start_capture(video)
 
     def _on_loop(self):
         with self._lock:

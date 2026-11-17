@@ -517,6 +517,36 @@ class Commands:
             out["note"] = ("A PipeWire camera works in OBS 30+, Firefox and Chrome. " + setup_hint())
         return out
 
+    def cmd_list_videos(self):
+        from .recordings import list_videos
+        eng = self.app.engine
+        return {"playing": eng.video or "webcam", "music": eng.audio_file,
+                "videos": [{"number": i + 1, "path": str(v.path), "music": str(v.audio) if v.audio else None,
+                            "seconds": round(v.seconds, 1), "note": v.note or None}
+                           for i, v in enumerate(list_videos())]}
+
+    def cmd_play_video(self, video):
+        """video: a number from list_videos, a path, or "webcam"."""
+        from .recordings import list_videos
+        eng = self.app.engine
+        if str(video).lower() == "webcam":
+            eng.set_source(None)
+            return {"playing": "webcam"}
+        vids = list_videos()
+        if isinstance(video, int) or str(video).isdigit():
+            i = int(video) - 1
+            if not 0 <= i < len(vids):
+                raise CommandError(f"there are {len(vids)} videos; numbers go from 1")
+            v = vids[i]
+            eng.set_source(str(v.path), str(v.audio) if v.audio else None)
+        else:
+            path = Path(str(video)).expanduser()
+            if not path.is_file():
+                raise CommandError(f"no such file: {path}")
+            match = next((v for v in vids if v.path == path), None)
+            eng.set_source(str(path), str(match.audio) if match and match.audio else None)
+        return {"playing": eng.video, "music": eng.audio_file}
+
     def cmd_audio(self, enable: str | None = None, disable: str | None = None, gain: float | None = None,
                   source: str | None = None):
         from .audio.sources import list_sources

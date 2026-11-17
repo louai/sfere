@@ -54,6 +54,8 @@ class Panels:
         self._gesture = None          # touch: None, "control", or the key of the window being scrolled
         self._pressed_value = None    # touch: (slider label, value before the press)
         self._guide = None
+        self.videos = None            # recordings.Video list, loaded when the picker opens
+        self.video_sel = -1
         self.renaming = None          # the new name being typed, while renaming a scene
         self.rename_msg = ""
         self.drag_button = 0
@@ -217,8 +219,10 @@ class Panels:
         im, app, eng = self.imgui, self.app, self.app.engine
         cfg = eng.tracker.config
         cam = app.settings["camera"]
-        im.text(f"Source: {eng.capture.source}   {eng.capture.status}   {eng.capture.fps:.1f} fps   "
-                f"tracking {eng.tracker.last_ms:.2f} ms   profile: {eng.tracker.active_profile}")
+        src = Path(eng.video).name if eng.video else f"webcam {eng.capture.source}"
+        im.text(f"Source: {src}{'  + its music' if eng.audio_file else ''}   {eng.capture.status}   "
+                f"{eng.capture.fps:.1f} fps   tracking {eng.tracker.last_ms:.2f} ms   profile: {eng.tracker.active_profile}")
+        self._video_picker()
         w = min(640.0 * self.dpi, im.get_content_region_avail().x)
         h = w * 9 / 16
         p0 = im.get_cursor_screen_pos()
@@ -294,6 +298,42 @@ class Panels:
                     eng.controls.set({label: v})
             if im.button("Apply dark-stage preset"):
                 eng.controls.set(camera_controls_from_settings(cam))
+
+    def _video_picker(self):
+        """Play a recording or clip instead of the webcam (a sfere recording brings its music)."""
+        im, eng = self.imgui, self.app.engine
+        if not im.collapsing_header("Play a video instead of the webcam"):
+            return
+        if self.videos is None or im.button("Refresh"):
+            from .recordings import list_videos
+            self.videos = list_videos()
+            self.video_sel = 0 if self.videos else -1
+        im.same_line()
+        im.begin_disabled(eng.video is None)
+        if im.button("Back to the webcam"):
+            eng.set_source(None)
+        im.end_disabled()
+        if not self.videos:
+            im.text_disabled("No videos in ~/Videos/sfere or ~/Videos/Camera. Record one with Record (R).")
+            return
+        if im.begin_list_box("##videos", (-1, self.px(150))):
+            for i, v in enumerate(self.videos):
+                playing = eng.video == str(v.path)
+                if im.selectable(("▶ " if playing else "   ") + v.label + f"##v{i}", i == self.video_sel)[0]:
+                    self.video_sel = i
+                if im.is_item_hovered() and im.is_mouse_double_clicked(0):
+                    self._play_video(v)
+            self._touch_scroll("videos")
+            im.end_list_box()
+        im.begin_disabled(not 0 <= self.video_sel < len(self.videos))
+        if im.button("Play"):
+            self._play_video(self.videos[self.video_sel])
+        im.end_disabled()
+        im.same_line()
+        im.text_disabled("A sfere recording plays with the music recorded alongside it.")
+
+    def _play_video(self, v):
+        self.app.engine.set_source(str(v.path), str(v.audio) if v.audio else None)
 
     # ---------------------------------------------------------------- audio
     def tab_audio(self):

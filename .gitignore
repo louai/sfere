@@ -5,3 +5,6 @@ __pycache__/
 sfere/_native/*.so
 out/
 *.wav
+
+# secrets that must never be committed
+*creds*
