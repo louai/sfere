@@ -67,6 +67,13 @@ DEFAULTS: dict = {
         "order": "in order",  # "in order" | "shuffle"
         "on_beat": True,      # with a locked tempo, change on the next beat
     },
+    "music": {
+        "genre": "techno",    # house | techno | trance | dnb (motion_tempo.GENRES)
+        "mix_bars": 16,       # length of a transition
+        "max_stretch": 0.08,  # how far a track may be sped up or slowed down
+        "follow_movement": True,   # nudge the playing track's tempo toward the movement
+        "volume": 1.0,
+    },
     "ui": {
         # auto = on when a touch screen is connected: larger controls, finger scrolling, and
         # XWayland so touches reach the window (sfere/touch.py)

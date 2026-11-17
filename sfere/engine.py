@@ -24,6 +24,7 @@ class Engine:
         self.preview_mask = None
         self.last_full_frame = None
         self.recording = None          # a Recording that wants camera frames, or None
+        self.motion = None             # MotionTempo fed with the ball's velocity, if set
         self._lock = threading.Lock()
         self.controls = None
         self.video = video                 # the file playing instead of the webcam, or None
@@ -86,6 +87,8 @@ class Engine:
             filt = self.filter
         obs = self.tracker.process(frame, t, filt.prediction(), filt.gate())
         filt.update(obs, t)
+        if self.motion is not None:    # the movement's tempo (DJ set)
+            self.motion.feed(t, float(filt.x[2]), float(filt.x[3]), 1.0 if obs is not None else 0.0)
         self.preview = self.tracker.small
         self.preview_mask = self.tracker.mask
         self.last_full_frame = frame

@@ -253,6 +253,45 @@ class FileSource(Source):
                 self._stop.wait(max(0.0, next_t - time.monotonic()))
 
 
+class StreamSource(Source):
+    """Plays what `render(frames) -> (frames, 2)` produces (the DJ set) to the speakers and
+    analyses exactly those samples, like FileSource."""
+
+    kind = "dj"
+
+    def __init__(self, id: str, name: str, render, gain: float = 1.0, play_audio: bool = True):
+        super().__init__(id, name, gain)
+        self.render, self.play_audio = render, play_audio
+
+    def _run(self):
+        import sounddevice as sd
+
+        if self.play_audio:
+            def callback(outdata, frames, _time, _status):
+                out = self.render(frames)
+                outdata[:] = out
+                mono = out.mean(axis=1)
+                self._meter(mono)
+                self.fifo.push(mono)
+
+            try:
+                with sd.OutputStream(samplerate=SR, channels=2, dtype="float32", blocksize=BLOCK, callback=callback):
+                    self.status = "playing"
+                    while not self._stop.wait(0.1):
+                        pass
+            except Exception as e:
+                self.status = f"error: {e}"
+        else:   # silent: paced by the clock (tests, headless)
+            self.status = "playing (silent)"
+            next_t = time.monotonic()
+            while not self._stop.is_set():
+                mono = self.render(BLOCK).mean(axis=1)
+                self._meter(mono)
+                self.fifo.push(mono)
+                next_t += BLOCK / SR
+                self._stop.wait(max(0.0, next_t - time.monotonic()))
+
+
 class AudioEngine:
     """Owns the sources, the mixer thread and the analyser."""
 
@@ -282,6 +321,12 @@ class AudioEngine:
             src = self.sources.pop(id, None)
         if src:
             src.stop()
+
+    def add(self, src: Source) -> Source:
+        """Start and mix in a source made elsewhere (the DJ set)."""
+        with self._lock:
+            self.sources[src.id] = src.start()
+        return src
 
     def play_file(self, path: str, play_audio: bool = True, loop: bool = True, gain: float = 1.0) -> FileSource:
         for id in [k for k, s in self.sources.items() if s.kind == "file"]:

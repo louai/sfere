@@ -120,6 +120,11 @@ class App:
         glfw.set_monitor_callback(lambda m, event: setattr(self, "_monitors_changed", True))
         out["mode"] = "window"          # sfere always starts windowed; F goes fullscreen
         self._frame_count = 0
+        from .motion_tempo import MotionTempo
+        self.motion = MotionTempo(self.settings["music"].get("genre", "techno"))
+        self.engine.motion = self.motion
+        self.dj = None                  # music.session.Session while a DJ set plays
+        self.dj_log: list[str] = []
         from .cycle import SceneCycle
         self.cycle = SceneCycle(self.settings["cycle"])
         self.recording = None           # outputs.recorder.Recording while recording
@@ -325,6 +330,8 @@ class App:
             self.toggle_recording()
         elif key == g.KEY_A:
             self.toggle_cycle()
+        elif key == g.KEY_J:
+            self.toggle_set()
         elif key == g.KEY_SPACE:
             self.freeze = not self.freeze
         elif g.KEY_1 <= key <= g.KEY_9:
@@ -336,6 +343,26 @@ class App:
 
     def toggle_blackout(self):
         self.scenes.blackout_target = 0.0 if self.scenes.blackout_target > 0.5 else 1.0
+
+    # ------------------------------------------------------------------ DJ set
+    def toggle_set(self):
+        self.stop_set() if self.dj else self.start_set()
+
+    def start_set(self) -> bool:
+        if self.dj:
+            return True
+        from .music.session import Session
+        self.motion.set_genre(self.settings["music"].get("genre", "techno"))
+        self.dj = Session(self.engine.audio, self.motion, self.settings["music"],
+                          play_audio=self.engine.play_audio).start()
+        return True
+
+    def stop_set(self):
+        dj, self.dj = self.dj, None
+        if dj:
+            saved = dj.stop()
+            if saved:
+                self.dj_log.append(f"Set list saved: {saved}")
 
     def toggle_cycle(self):
         cfg = self.settings["cycle"]
@@ -471,6 +498,7 @@ class App:
         if not self.freeze or self.last_tex is None:
             self.last_tex = self.scenes.render(t - self.t0, dt, ball, audio)
         self._cycle_scenes(time.monotonic())
+        self.motion.update(time.monotonic())
         if self.recording or self.vcam:
             self._feed_outputs(time.monotonic())
         fw, fh = glfw.get_framebuffer_size(self.out_win)
@@ -614,6 +642,7 @@ class App:
                 self.save_scenes()
         finally:
             self.control.close()
+            self.stop_set()
             self.stop_recording()
             # wait only until each recording's finishing process runs; it completes on its own
             for t in self.finishing:
