@@ -13,13 +13,6 @@ import math
 
 import numpy as np
 
-# BPM ranges per genre (Music tab); drum & bass also accepts half time below its range
-GENRES = {
-    "house": ("House / tech house", 118.0, 128.0, "House"),
-    "techno": ("Techno", 125.0, 140.0, "Techno"),
-    "trance": ("Trance / progressive", 128.0, 140.0, "Trance"),
-    "dnb": ("Drum & bass", 165.0, 178.0, "Drum & Bass"),
-}
 RATE = 50.0               # Hz the velocity is resampled to
 WINDOW = 8.0              # seconds analysed
 MIN_PERIOD, MAX_PERIOD = 0.25, 2.0   # cycles from 240 down to 30 per minute
@@ -82,33 +75,39 @@ class MotionTempo:
     TOLERANCE = 0.03      # a tempo within 3 % of the target is the same tempo
     MIN_CONFIDENCE = 0.4
 
-    def __init__(self, genre: str = "techno"):
+    def __init__(self, genre: str | dict = "techno"):
         self.samples: collections.deque = collections.deque()
-        self.genre = genre
+        self.genre, self._range = "", (125.0, 140.0)
         self.raw_bpm = 0.0            # the movement's tempo, folded into the genre range
         self.cycle_s = 0.0            # the movement's own period, unfolded
         self.confidence = 0.0
-        self.target_bpm = self.center
         self.locked = False           # hold the target (or manual_bpm, if set)
         self.manual_bpm: float | None = None
         self._candidate = None        # (bpm, since)
         self._next_estimate = 0.0
+        self.set_genre(genre)
 
     @property
     def range(self) -> tuple[float, float]:
-        _, lo, hi, _ = GENRES.get(self.genre, GENRES["techno"])
-        return lo, hi
+        return self._range
 
     @property
     def center(self) -> float:
         lo, hi = self.range
         return round((lo + hi) / 2)
 
-    def set_genre(self, genre: str) -> None:
-        if genre == self.genre:
+    def set_genre(self, genre: str | dict) -> None:
+        """A genre (music/genres.py) or a built-in genre's key: its BPM range is where the
+        movement's tempo is counted."""
+        if isinstance(genre, str):
+            from .music.genres import DEFAULTS
+            genre = next((g for g in DEFAULTS if g["key"] == genre), DEFAULTS[1])
+        rng = (float(genre["bpm"][0]), float(genre["bpm"][1]))
+        if genre["key"] == self.genre and rng == self._range:
             return
-        self.genre = genre
-        self.target_bpm = fold(self.target_bpm, *self.range)
+        first = not self.genre
+        self.genre, self._range = genre["key"], rng
+        self.target_bpm = self.center if first else fold(self.target_bpm, *rng)
         self._candidate = None
 
     def feed(self, t: float, vx: float, vy: float, visible: float) -> None:

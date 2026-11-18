@@ -121,7 +121,8 @@ class App:
         out["mode"] = "window"          # sfere always starts windowed; F goes fullscreen
         self._frame_count = 0
         from .motion_tempo import MotionTempo
-        self.motion = MotionTempo(self.settings["music"].get("genre", "techno"))
+        from .music import genres as genres_mod
+        self.motion = MotionTempo(genres_mod.find(self.settings, self.settings["music"].get("genre", "techno")))
         self.engine.motion = self.motion
         self.dj = None                  # music.session.Session while a DJ set plays
         self.dj_log: list[str] = []
@@ -352,9 +353,21 @@ class App:
         if self.dj:
             return True
         from .music.session import Session
-        self.motion.set_genre(self.settings["music"].get("genre", "techno"))
+        from .music import genres
+        genre = genres.find(self.settings, self.settings["music"].get("genre", "techno"))
+        self.motion.set_genre(genre)
         self.dj = Session(self.engine.audio, self.motion, self.settings["music"],
-                          play_audio=self.engine.play_audio).start()
+                          play_audio=self.engine.play_audio, genre=genre).start()
+
+    def set_genre(self, key: str) -> dict:
+        """Choose the set's genre (also mid-set: the next picks come from it)."""
+        from .music import genres
+        genre = genres.find(self.settings, key)
+        self.settings["music"]["genre"] = genre["key"]
+        self.motion.set_genre(genre)
+        if self.dj and self.dj.genre != genre:
+            self.dj.set_genre(genre)
+        return genre
         return True
 
     def stop_set(self):

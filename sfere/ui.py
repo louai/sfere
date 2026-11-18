@@ -54,6 +54,7 @@ class Panels:
         self._gesture = None          # touch: None, "control", or the key of the window being scrolled
         self._pressed_value = None    # touch: (slider label, value before the press)
         self._guide = None
+        self.genre_probe = ""         # result of the genre editor's "Try the search"
         self.videos = None            # recordings.Video list, loaded when the picker opens
         self.video_sel = -1
         self.renaming = None          # the new name being typed, while renaming a scene
@@ -344,20 +345,20 @@ class Panels:
     # ---------------------------------------------------------------- music
     def tab_music(self):
         """The DJ set: Audius tracks near the tempo of the ball's movement, mixed by sfere."""
-        from .motion_tempo import GENRES
+        from .music import genres
         im, app = self.imgui, self.app
         cfg, mt, dj = app.settings["music"], app.motion, app.dj
         if dj:
             dj.engine.volume = float(cfg.get("volume", 1.0))
         im.separator_text("DJ set")
-        keys = list(GENRES)
+        gs = genres.all_genres(app.settings)
+        keys = [g["key"] for g in gs]
         cur = cfg.get("genre", "techno")
-        im.set_next_item_width(self.px(260))
-        ch, i = im.combo("Genre", keys.index(cur) if cur in keys else 1,
-                         [f"{GENRES[k][0]}  ({GENRES[k][1]:.0f}–{GENRES[k][2]:.0f} BPM)" for k in keys])
+        im.set_next_item_width(min(self.px(420), im.get_content_region_avail().x * 0.7))
+        ch, i = im.combo("Genre", keys.index(cur) if cur in keys else 0,
+                         [f"{g['name']}  ({g['bpm'][0]}–{g['bpm'][1]} BPM)" for g in gs])
         if ch:
-            cfg["genre"] = keys[i]
-            mt.set_genre(keys[i])
+            app.set_genre(keys[i])
         self._flow_begin()
         if dj is None:
             if self._button("Start set (J)"):
@@ -374,6 +375,10 @@ class Panels:
                 im.text_colored((1, 0.6, 0.3, 1), dj.error[:200])
         for msg in app.dj_log[-2:]:
             im.text_disabled(msg)
+        gs = genres.all_genres(app.settings)
+        keys = [g["key"] for g in gs]
+        cur = cfg.get("genre", "techno")
+        self._genre_editor(gs, keys.index(cur) if cur in keys else 0)
 
         im.separator_text("Tempo from your movement")
         if mt.confidence > 0:
@@ -429,6 +434,130 @@ class Panels:
         _, cfg["volume"] = self._slider("Volume##dj", float(cfg.get("volume", 1.0)), 0.0, 1.5, "%.2f")
         im.text_disabled("Music from Audius (audius.co), by the artists shown; streamed for this set only and "
                          "deleted when it stops. Playing it in public may need a licence from the venue.")
+
+    def _genre_editor(self, gs: list, idx: int):
+        """Edit the genre chosen above: how its tracks are found on Audius, and its tempo."""
+        from .music import genres
+        im, app = self.imgui, self.app
+        if not im.collapsing_header("Edit genres"):
+            return
+        g = dict(gs[idx])
+        changed = False
+        self._hint("Audius has no genre for much of the world's dance music (SWANA, South Asian, ...): "
+                   "those are found by keywords. Edits apply to the next tracks picked.")
+        ch, name = im.input_text("Name##genre", g["name"])
+        if ch and name.strip():                      # a new name only: nothing to search again
+            genres.save(app.settings, [{**x, "name": name} if x["key"] == g["key"] else x for x in gs])
+            gs = genres.all_genres(app.settings)
+            g["name"] = name
+        lo, hi = g["bpm"]
+        ch1, lo = self._slider("Slowest BPM##genre", int(lo), 60, 200)
+        ch2, hi = self._slider("Fastest BPM##genre", int(hi), 60, 200)
+        if ch1 or ch2:
+            g["bpm"], changed = [min(lo, hi - 2), max(hi, lo + 2)], True
+        ch, octv = im.checkbox("Also use tracks tagged at half or double tempo##genre", bool(g.get("octaves")))
+        if ch:
+            g["octaves"], changed = octv, True
+        if im.is_item_hovered():
+            im.set_tooltip("Bhangra or dabke tagged at 50-65 BPM count as 100-130.")
+        ch, words = im.input_text("Keywords (comma-separated)##genre", ", ".join(g.get("keywords", [])))
+        if ch:
+            g["keywords"], changed = [w.strip() for w in words.split(",") if w.strip()], True
+        self._hint("Keywords are searched in titles, tags and descriptions. With keywords, the Audius genres "
+                   "below only filter the results; without, sfere searches those genres.")
+        ch, words = im.input_text("Leave out titles with (comma-separated)##genre", ", ".join(g.get("avoid", [])))
+        if ch:
+            g["avoid"], changed = [w.strip() for w in words.split(",") if w.strip()], True
+        for field, title in (("audius", "Only these Audius genres (none ticked: any)"),
+                             ("exclude", "Never these Audius genres")):
+            if im.tree_node(f"{title}  ({len(g.get(field, []))} ticked)##{field}"):
+                cols = max(1, int(im.get_content_region_avail().x // self.px(190)))
+                if im.begin_table(f"##{field}", cols):
+                    for ag in genres.AUDIUS_GENRES:
+                        im.table_next_column()
+                        on = ag in g.get(field, [])
+                        ch, on = im.checkbox(f"{ag}##{field}", on)
+                        if ch:
+                            g[field] = [x for x in g.get(field, []) if x != ag] + ([ag] if on else [])
+                            changed = True
+                    im.end_table()
+                im.tree_pop()
+        if changed:
+            gs = [genres.clean(g) if x["key"] == g["key"] else x for x in gs]
+            genres.save(app.settings, gs)
+            app.set_genre(g["key"])
+        self._flow_begin()
+        if self._button("New genre"):
+            new = genres.clean({"name": "New genre", "bpm": g["bpm"], "keywords": [], "audius": [],
+                                "exclude": list(genres.NOT_DANCE), "octaves": False,
+                                "key": genres.new_key("new genre", [x["key"] for x in gs])})
+            genres.save(app.settings, gs + [new])
+            app.set_genre(new["key"])
+        if self._button("Duplicate"):
+            dup = {**g, "name": f"{g['name']} copy", "key": genres.new_key(g["key"], [x["key"] for x in gs])}
+            genres.save(app.settings, gs + [genres.clean(dup)])
+            app.set_genre(dup["key"])
+        im.begin_disabled(len(gs) < 2)
+        if self._button("Delete"):
+            im.open_popup("Delete genre?")
+        im.end_disabled()
+        if self._button("Reset to sfere's genres"):
+            im.open_popup("Reset genres?")
+        if self._button("Try the search"):
+            self._genre_probe(genres.clean(g))
+        if self.genre_probe:
+            self._hint(self.genre_probe)
+        flags = im.WindowFlags_.always_auto_resize
+        if im.begin_popup_modal("Delete genre?", None, flags)[0]:
+            im.text(f"Delete {g['name']}?")
+            if im.button("Delete genre"):
+                genres.save(app.settings, [x for x in gs if x["key"] != g["key"]])
+                app.set_genre(genres.all_genres(app.settings)[0]["key"])
+                im.close_current_popup()
+            im.same_line()
+            if im.button("Keep it"):
+                im.close_current_popup()
+            im.end_popup()
+        if im.begin_popup_modal("Reset genres?", None, flags)[0]:
+            im.text("Put back sfere's genres? Your own genres and edits are lost.")
+            if im.button("Reset"):
+                app.settings["music"].pop("genres", None)
+                app.set_genre(app.settings["music"].get("genre", "techno"))
+                im.close_current_popup()
+            im.same_line()
+            if im.button("Cancel##genres"):
+                im.close_current_popup()
+            im.end_popup()
+
+    def _hint(self, text: str):
+        """Muted text that wraps to the window."""
+        im = self.imgui
+        im.push_style_color(im.Col_.text, im.get_style().color_(im.Col_.text_disabled))
+        im.text_wrapped(text)
+        im.pop_style_color()
+
+    def _genre_probe(self, g: dict):
+        """How many usable tracks this genre finds near the target tempo now (in the background)."""
+        import threading
+        from .music import genres
+        from .music.audius import Audius, AudiusError
+        target = self.app.motion.target_bpm
+        self.genre_probe = f"Searching Audius for {g['name']} near {target:.0f} BPM…"
+
+        def run():
+            a, found, kept = Audius(), {}, 0
+            try:
+                for audius_genre, query in genres.search_plan(g):
+                    for lo, hi in genres.bpm_ranges({**g, "bpm": [target, target]}, 0.08):
+                        for t in a.search(audius_genre or "", lo, hi, limit=50, query=query):
+                            found[t["id"]] = t
+                kept = sum(genres.keep(g, t) for t in found.values())
+                self.genre_probe = (f"{kept} usable tracks near {target:.0f} BPM ({len(found) - kept} left out by "
+                                    f"genre). " + ("Enough for a set." if kept >= 15 else
+                                                   "Few: widen the BPM range, add keywords, or allow half/double tempo."))
+            except AudiusError as e:
+                self.genre_probe = f"Search failed: {e}"
+        threading.Thread(target=run, daemon=True).start()
 
     # ---------------------------------------------------------------- audio
     def tab_audio(self):

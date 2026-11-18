@@ -26,21 +26,23 @@ import threading
 import time
 from pathlib import Path
 
+from . import genres as genres_mod
 from .audius import Audius, AudiusError, describe
 from .dj import Deck, Engine
 from .picker import choose, stretch_needed
 from .prepare import SR, PrepareError, prepare, rerender
 
-GENRE_SEARCH = {"house": ["House", "Tech House", "Deep House"], "techno": ["Techno"],
-                "trance": ["Trance", "Progressive House"], "dnb": ["Drum & Bass"]}
 SETLISTS = Path.home() / "Music" / "sfere"
 PREPARE_AHEAD = 120.0      # seconds before a mix point to start preparing the next track
 MIN_GRID_CONFIDENCE = 0.25
 
 
 class Session:
-    def __init__(self, audio_engine, motion, cfg: dict, play_audio: bool = True, audius: Audius | None = None):
+    def __init__(self, audio_engine, motion, cfg: dict, play_audio: bool = True, audius: Audius | None = None,
+                 genre: dict | None = None):
         self.audio_engine, self.motion, self.cfg = audio_engine, motion, cfg
+        self.genre = genre or genres_mod.DEFAULTS[1]
+        self._genre_changed = 0.0
         self.play_audio = play_audio
         self.audius = audius or Audius()
         self.engine = Engine(volume=float(cfg.get("volume", 1.0)))
@@ -75,6 +77,11 @@ class Session:
                                                          play_audio=self.play_audio))
         self._thread.start()
         return self
+
+    def set_genre(self, genre: dict) -> None:
+        """Change the genre mid-set: the pool is rebuilt once edits have paused for a moment."""
+        self.genre = genre
+        self._genre_changed = time.monotonic()
 
     def skip(self) -> None:
         self._skip.set()
@@ -184,14 +191,30 @@ class Session:
                 self._schedule(deck, nd, mix_at, self.mix_bars)
 
     def _refresh_pool(self, target: float):
+        if self._genre_changed:
+            if time.monotonic() - self._genre_changed < 1.5:
+                return                           # still being edited
+            self._genre_changed, self.pool = 0.0, {}
         if self.pool and abs(target / self.pool_center - 1) < 0.02 and len(self.pool) >= 20:
             return
-        lo, hi = target * (1 - self.max_stretch), target * (1 + self.max_stretch)
+        g, m = self.genre, self.max_stretch
+        # around the target, plus its other octaves when the genre's tracks may be tagged there
+        ranges = [(target * (1 - m), target * (1 + m))]
+        if g.get("octaves"):
+            ranges += [(lo / 2, hi / 2) for lo, hi in ranges] + [(lo * 2, hi * 2) for lo, hi in ranges]
         found = {}
-        for genre in GENRE_SEARCH.get(self.motion.genre, ["Techno"]):
-            for offset in (0, 50):
-                for t in self.audius.search(genre, lo, hi, limit=50, offset=offset):
-                    found[t["id"]] = describe(t)
+        offsets = (0, 50) if len(self.pool) < 20 else (0,)
+        # every keyword at the target's own range first; other octaves and later pages after
+        plan = genres_mod.search_plan(g)
+        calls = [(a, q, *ranges[0], 0) for a, q in plan]
+        calls += [(a, q, lo, hi, 0) for lo, hi in ranges[1:] for a, q in plan]
+        calls += [(a, q, *ranges[0], off) for off in offsets[1:] for a, q in plan]
+        for audius_genre, query, lo, hi, offset in calls[:24]:      # a refresh stays a few seconds
+            for t in self.audius.search(audius_genre or "", lo, hi, limit=50, offset=offset, query=query):
+                if genres_mod.keep(g, t):
+                    meta = describe(t)
+                    meta["bpm"] = genres_mod.in_octave(g, meta["bpm"], m)
+                    found[t["id"]] = meta
         if found:
             self.pool.update(found)
         self.pool_center = target
@@ -274,7 +297,7 @@ class Session:
         for t in self.history:
             lines += [f"#EXTINF:{int(t['duration'])},{t['artist']} - {t['title']}", t["link"]]
         Path(f"{base}.m3u").write_text("\n".join(lines) + "\n")
-        Path(f"{base}.json").write_text(json.dumps({"genre": self.motion.genre, "tracks": self.history}, indent=1))
+        Path(f"{base}.json").write_text(json.dumps({"genre": self.genre.get("name"), "tracks": self.history}, indent=1))
         return Path(f"{base}.m3u")
 
     def _cleanup(self):

@@ -560,14 +560,48 @@ class Commands:
                 "settings": dict(app.settings["music"])}
 
     def cmd_music_start(self, genre: str | None = None):
-        from .motion_tempo import GENRES
         if genre:
-            if genre not in GENRES:
-                raise CommandError(f"genre is one of {', '.join(GENRES)}")
-            self.app.settings["music"]["genre"] = genre
-            self.app.motion.set_genre(genre)
+            self._genre_key(genre)
+            self.app.set_genre(genre)
         self.app.start_set()
         return self.cmd_music_status()
+
+    def _genre_key(self, key: str) -> str:
+        from .music import genres
+        keys = [g["key"] for g in genres.all_genres(self.app.settings)]
+        if key not in keys:
+            raise CommandError(f"no genre {key!r}; genres: {', '.join(keys)}")
+        return key
+
+    def cmd_music_genres(self):
+        from .music import genres
+        return {"current": self.app.settings["music"].get("genre"), "genres": genres.all_genres(self.app.settings),
+                "audius_genres": genres.AUDIUS_GENRES}
+
+    def cmd_music_genre_save(self, genre: dict):
+        """Create or replace a genre (matched by key; a new key when it has none)."""
+        from .music import genres
+        gs = genres.all_genres(self.app.settings)
+        g = dict(genre)
+        if not g.get("key"):
+            g["key"] = genres.new_key(g.get("name", "genre"), [x["key"] for x in gs])
+        g = genres.clean(g)
+        gs = [g if x["key"] == g["key"] else x for x in gs] + ([] if any(x["key"] == g["key"] for x in gs) else [g])
+        genres.save(self.app.settings, gs)
+        if self.app.settings["music"].get("genre") == g["key"]:
+            self.app.set_genre(g["key"])
+        return {"saved": g}
+
+    def cmd_music_genre_delete(self, key: str):
+        from .music import genres
+        gs = genres.all_genres(self.app.settings)
+        self._genre_key(key)
+        if len(gs) < 2:
+            raise CommandError("the last genre can't be deleted")
+        genres.save(self.app.settings, [g for g in gs if g["key"] != key])
+        if self.app.settings["music"].get("genre") == key:
+            self.app.set_genre(genres.all_genres(self.app.settings)[0]["key"])
+        return {"deleted": key, "genres": [g["key"] for g in genres.all_genres(self.app.settings)]}
 
     def cmd_music_stop(self):
         self.app.stop_set()
@@ -581,13 +615,10 @@ class Commands:
 
     def cmd_music_tempo(self, lock: bool | None = None, manual_bpm: float | None = None, follow: bool | None = None,
                         genre: str | None = None):
-        from .motion_tempo import GENRES
         mt, cfg = self.app.motion, self.app.settings["music"]
         if genre:
-            if genre not in GENRES:
-                raise CommandError(f"genre is one of {', '.join(GENRES)}")
-            cfg["genre"] = genre
-            mt.set_genre(genre)
+            self._genre_key(genre)
+            self.app.set_genre(genre)
         if lock is not None:
             mt.locked = bool(lock)
         if manual_bpm is not None:

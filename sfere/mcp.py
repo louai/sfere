@@ -104,15 +104,23 @@ TOOLS = [
     ("music_status", "The DJ set: the tempo read from the ball's movement (bpm, cycle, confidence), the target "
      "BPM (locked / manual), the playing tempo, the genre, and the queue (playing, next, planned) of Audius tracks "
      "with links.", _obj(), "music_status"),
-    ("music_start", "Start a DJ set: sfere picks Audius tracks near the movement's tempo in the genre (house, "
-     "techno, trance, dnb), beat-matches and mixes them, and follows the movement's tempo.",
-     _obj({"genre": {"type": "string", "enum": ["house", "techno", "trance", "dnb"]}}), "music_start"),
+    ("music_start", "Start a DJ set: sfere picks Audius tracks near the movement's tempo in the genre (see "
+     "music_genres), beat-matches and mixes them, and follows the movement's tempo.",
+     _obj({"genre": {"type": "string", "description": "A genre key from music_genres."}}), "music_start"),
     ("music_stop", "Stop the DJ set (the set list is saved to ~/Music/sfere).", _obj(), "music_stop"),
     ("music_skip", "Mix into the next track now (a short 4-bar mix on the next bar).", _obj(), "music_skip"),
     ("music_tempo", "Steer the set's tempo: lock the target, set a manual BPM (0 or null to follow the movement "
      "again), whether the playing track's tempo follows changes, or the genre.",
      _obj({"lock": {"type": "boolean"}, "manual_bpm": {"type": ["number", "null"]}, "follow": {"type": "boolean"},
-           "genre": {"type": "string", "enum": ["house", "techno", "trance", "dnb"]}}), "music_tempo"),
+           "genre": {"type": "string", "description": "A genre key from music_genres."}}), "music_tempo"),
+    ("music_genres", "The set's genres (editable): each with key, name, BPM range, the Audius genres it searches "
+     "or keeps, keywords searched for (Audius has no genre for e.g. SWANA or South Asian dance music, so those "
+     "are found by keyword), Audius genres excluded, and whether tracks tagged at half/double tempo count.",
+     _obj(), "music_genres"),
+    ("music_genre_save", "Create or change a genre: {key?, name, bpm: [min, max], audius: [...], keywords: [...], "
+     "exclude: [...], avoid: [words in titles that rule a track out], octaves: bool}. Without a key it's a new genre.",
+     _obj({"genre": {"type": "object"}}, ["genre"]), "music_genre_save"),
+    ("music_genre_delete", "Delete a genre by key.", _obj({"key": {"type": "string"}}, ["key"]), "music_genre_delete"),
     ("audio", "List the audio sources (other apps' output, mics, line-ins) and which are on; turn one on or off; "
      "set an active source's gain (0–4).",
      _obj({"enable": {"type": "string"}, "disable": {"type": "string"}, "source": {"type": "string"},

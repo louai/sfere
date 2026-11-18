@@ -157,7 +157,29 @@ Then set the value **When quiet / still** and **When loud / fast**. sfere moves 
 
 sfere can play the music too: it reads a tempo from the way you move the ball, finds dance tracks at that tempo on Audius, and mixes them like a DJ. Open the **Music** tab, choose a genre and press **Start set**, or press J.
 
-- **Tempo from your movement.** sfere times how often your loops and arcs repeat, and counts each one as a beat. It moves that tempo into the genre's range by doubling or halving it: house 118–128 BPM, techno 125–140, trance and progressive 128–140, drum & bass 165–178. The bar beside it shows how steady your movement is. The target only changes once a new tempo has held for about six seconds, so a single fast flick doesn't change the music.
+- **Tempo from your movement.** sfere times how often your loops and arcs repeat, and counts each one as a beat. It moves that tempo into the genre's range by doubling or halving it (house is 118–128 BPM, for example). The bar beside it shows how steady your movement is. The target only changes once a new tempo has held for about six seconds, so a single fast flick doesn't change the music.
+- **Genres.** sfere comes with eight:
+
+  | Genre | BPM | Found by |
+  |---|---|---|
+  | House / tech house | 118–128 | Audius's House, Tech House and Deep House |
+  | Techno | 125–140 | Audius's Techno |
+  | Trance / progressive | 128–140 | Audius's Trance and Progressive House |
+  | Drum & bass | 165–178 | Audius's Drum & Bass and Jungle |
+  | SWANA house | 118–126 | Arabic, oriental, Persian and Turkish house: keywords, kept to house and electronic tracks |
+  | SWANA dance | 95–135 | Dabke, shaabi, raï, mahraganat, khaleeji and Arabic dance: keywords |
+  | Bhangra | 90–110 | Bhangra, dhol and Punjabi: keywords |
+  | Desi club | 118–130 | Bollywood, Punjabi, Hindi and desi club music: keywords |
+
+  Audius sorts music into its own genres, which have no place for SWANA (Southwest Asian and North African) or South Asian dance music, so those genres are found by keywords in the tracks' titles, tags and descriptions. Audius's catalog of them is smaller and more mixed than its house or techno: dabke, shaabi and mahraganat in particular are rare there.
+- **Editing genres.** Open **Edit genres** in the Music tab to change the selected genre or make your own:
+  - **Slowest BPM, Fastest BPM**: the range your movement's tempo is moved into, and where tracks are picked.
+  - **Also use tracks tagged at half or double tempo**: bhangra and dabke are often tagged in half time; this counts them at the range's tempo.
+  - **Keywords**: words a track's title, tags, description or artist must contain, as a whole word ("desi" doesn't match "desire"; accents don't matter, so rai finds raï).
+  - **Leave out titles with**: words that rule a track out, such as "type beat" (instrumentals made for rappers).
+  - **Only these Audius genres**: without keywords, the genres searched; with keywords, the genres kept.
+  - **Never these Audius genres**: genres left out, such as metal or podcasts that happen to mention a keyword.
+  - **Try the search** counts the tracks the genre finds near the current tempo, so you know whether there are enough for a set. **New genre**, **Duplicate**, **Delete** and **Reset to sfere's genres** manage the list. Changes apply to the next tracks picked, even during a set.
 - **Picking tracks.** sfere searches Audius for tracks in the genre near the target tempo and picks ones in a key that blends with the track playing, never the same track twice and never the same artist twice in a row. The next three are listed under **The set**; **Audius** opens a track's page.
 - **Mixing.** Each track is sped up or slowed down, without changing its pitch, to the set's tempo, so the beats of two tracks line up. sfere mixes into the next track on a bar near the end of the playing one: the two play together over the mix length (16 bars by default), and halfway through their basslines swap. **Skip to the next track** mixes in on the next bar, over 4 bars.
 - **Following you.** When your movement speeds up or slows down, the playing track follows, up to 2 % every 8 bars, and the next tracks are picked at the new tempo. **Lock the tempo** holds it where it is; **Set it by hand** sets a tempo yourself. Turn off **Speed up or slow down the playing track to follow** to change tempo only between tracks.
