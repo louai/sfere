@@ -547,6 +547,55 @@ class Commands:
             eng.set_source(str(path), str(match.audio) if match and match.audio else None)
         return {"playing": eng.video, "music": eng.audio_file}
 
+    def cmd_music_status(self):
+        app, mt, dj = self.app, self.app.motion, self.app.dj
+        return {"set": "playing" if dj else "off", "genre": app.settings["music"].get("genre"),
+                "movement": {"bpm": round(mt.raw_bpm, 1), "cycle_s": round(mt.cycle_s, 3),
+                             "confidence": round(mt.confidence, 2)},
+                "target_bpm": round(mt.target_bpm, 1), "locked": mt.locked, "manual_bpm": mt.manual_bpm,
+                "playing_tempo": round(dj.tempo, 2) if dj else None,
+                "status": dj.status if dj else None, "error": (dj.error or None) if dj else None,
+                "queue": [{k: t.get(k) for k in ("state", "artist", "title", "bpm", "key", "link")} for t in dj.queue()]
+                if dj else [], "played": len(dj.history) if dj else 0, "log": app.dj_log[-3:],
+                "settings": dict(app.settings["music"])}
+
+    def cmd_music_start(self, genre: str | None = None):
+        from .motion_tempo import GENRES
+        if genre:
+            if genre not in GENRES:
+                raise CommandError(f"genre is one of {', '.join(GENRES)}")
+            self.app.settings["music"]["genre"] = genre
+            self.app.motion.set_genre(genre)
+        self.app.start_set()
+        return self.cmd_music_status()
+
+    def cmd_music_stop(self):
+        self.app.stop_set()
+        return {"set": "off", "log": self.app.dj_log[-2:]}
+
+    def cmd_music_skip(self):
+        if not self.app.dj:
+            raise CommandError("no set is playing")
+        self.app.dj.skip()
+        return {"skipping": True}
+
+    def cmd_music_tempo(self, lock: bool | None = None, manual_bpm: float | None = None, follow: bool | None = None,
+                        genre: str | None = None):
+        from .motion_tempo import GENRES
+        mt, cfg = self.app.motion, self.app.settings["music"]
+        if genre:
+            if genre not in GENRES:
+                raise CommandError(f"genre is one of {', '.join(GENRES)}")
+            cfg["genre"] = genre
+            mt.set_genre(genre)
+        if lock is not None:
+            mt.locked = bool(lock)
+        if manual_bpm is not None:
+            mt.manual_bpm = float(manual_bpm) if manual_bpm else None
+        if follow is not None:
+            cfg["follow_movement"] = bool(follow)
+        return self.cmd_music_status()
+
     def cmd_audio(self, enable: str | None = None, disable: str | None = None, gain: float | None = None,
                   source: str | None = None):
         from .audio.sources import list_sources

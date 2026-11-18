@@ -32,6 +32,7 @@ With a touch screen connected, the control window switches to large controls and
 | `T` | tap tempo |
 | `R` | start/stop recording |
 | `A` | cycle through the scenes |
+| `J` | start/stop a DJ set (Music tab) |
 | `M` | mirror |
 | `D` | debug marker on the output |
 | `Space` | freeze |

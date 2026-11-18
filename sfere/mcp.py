@@ -101,6 +101,18 @@ TOOLS = [
     ("play_video", "Play a video as the input instead of the webcam (number from list_videos, or a path), or "
      "'webcam' to go back. A sfere camera recording also plays the music recorded with it.",
      _obj({"video": {"type": ["string", "integer"]}}, ["video"]), "play_video"),
+    ("music_status", "The DJ set: the tempo read from the ball's movement (bpm, cycle, confidence), the target "
+     "BPM (locked / manual), the playing tempo, the genre, and the queue (playing, next, planned) of Audius tracks "
+     "with links.", _obj(), "music_status"),
+    ("music_start", "Start a DJ set: sfere picks Audius tracks near the movement's tempo in the genre (house, "
+     "techno, trance, dnb), beat-matches and mixes them, and follows the movement's tempo.",
+     _obj({"genre": {"type": "string", "enum": ["house", "techno", "trance", "dnb"]}}), "music_start"),
+    ("music_stop", "Stop the DJ set (the set list is saved to ~/Music/sfere).", _obj(), "music_stop"),
+    ("music_skip", "Mix into the next track now (a short 4-bar mix on the next bar).", _obj(), "music_skip"),
+    ("music_tempo", "Steer the set's tempo: lock the target, set a manual BPM (0 or null to follow the movement "
+     "again), whether the playing track's tempo follows changes, or the genre.",
+     _obj({"lock": {"type": "boolean"}, "manual_bpm": {"type": ["number", "null"]}, "follow": {"type": "boolean"},
+           "genre": {"type": "string", "enum": ["house", "techno", "trance", "dnb"]}}), "music_tempo"),
     ("audio", "List the audio sources (other apps' output, mics, line-ins) and which are on; turn one on or off; "
      "set an active source's gain (0–4).",
      _obj({"enable": {"type": "string"}, "disable": {"type": "string"}, "source": {"type": "string"},

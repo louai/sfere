@@ -40,7 +40,7 @@ The top of the control window is always visible:
 - **Scene**: a dropdown of every scene. Pick one to crossfade to it. The number in front is its key.
 - **Messages**: shader errors and other warnings, in orange.
 
-Below that, six tabs hold the settings: Camera, Audio, Scenes, Output, Debug and Help.
+Below that, seven tabs hold the settings: Camera, Audio, Music, Scenes, Output, Debug and Help.
 
 ## 1. Camera: calibrate the ball
 
@@ -60,6 +60,12 @@ Other settings:
   - **auto** picks between them.
 - **Ball hue, Hue tolerance, Min saturation, Min brightness**: the thresholds that calibration sets. Fine-tune them by hand if needed.
 - **Exposure and Gain**: the webcam's own settings, for cameras that allow it. A short exposure keeps the ball sharp when it moves fast. sfere puts the camera back the way it found it when it exits.
+
+### Playing a video instead of the webcam
+
+Open **Play a video instead of the webcam** in the Camera tab. It lists sfere's recordings, newest first, then the clips in `~/Videos/Camera`. Choose one and press **Play** (or double-click it); **Back to the webcam** returns to the live camera.
+
+A camera recording made with **Separate videos** plays together with the music recorded alongside it, so the whole session replays: the ball, the beats and the visuals. Stacked recordings are listed too, but their top half is the visuals, so the ball isn't tracked well in them.
 
 ## 2. Audio: choose the music
 
@@ -146,6 +152,18 @@ The **♪** button in front of a setting makes it follow the music or the ball's
 - **Ball speed, Ball acceleration, Ball curve**: how the ball moves.
 
 Then set the value **When quiet / still** and **When loud / fast**. sfere moves the setting between the two. **Smoothing** slows the changes down: 0 follows instantly, higher values glide. A highlighted ♪ means the setting is following something; choose **Nothing** to set it by hand again.
+
+## DJ set from your movement
+
+sfere can play the music too: it reads a tempo from the way you move the ball, finds dance tracks at that tempo on Audius, and mixes them like a DJ. Open the **Music** tab, choose a genre and press **Start set**, or press J.
+
+- **Tempo from your movement.** sfere times how often your loops and arcs repeat, and counts each one as a beat. It moves that tempo into the genre's range by doubling or halving it: house 118–128 BPM, techno 125–140, trance and progressive 128–140, drum & bass 165–178. The bar beside it shows how steady your movement is. The target only changes once a new tempo has held for about six seconds, so a single fast flick doesn't change the music.
+- **Picking tracks.** sfere searches Audius for tracks in the genre near the target tempo and picks ones in a key that blends with the track playing, never the same track twice and never the same artist twice in a row. The next three are listed under **The set**; **Audius** opens a track's page.
+- **Mixing.** Each track is sped up or slowed down, without changing its pitch, to the set's tempo, so the beats of two tracks line up. sfere mixes into the next track on a bar near the end of the playing one: the two play together over the mix length (16 bars by default), and halfway through their basslines swap. **Skip to the next track** mixes in on the next bar, over 4 bars.
+- **Following you.** When your movement speeds up or slows down, the playing track follows, up to 2 % every 8 bars, and the next tracks are picked at the new tempo. **Lock the tempo** holds it where it is; **Set it by hand** sets a tempo yourself. Turn off **Speed up or slow down the playing track to follow** to change tempo only between tracks.
+- **What sfere listens to.** During a set the visuals follow the set itself, so other apps' sound is muted for sfere's ears (not for yours).
+
+The music comes from Audius (audius.co), an open platform where artists share their tracks. Tracks are downloaded for the current set only and deleted when it stops; the set list (artists, titles, links) is saved to `~/Music/sfere` as an `.m3u` playlist and a `.json` file. Credit goes to the artists shown. Playing a set at a public or paid event may need a performance licence from the venue, as with any recorded music.
 
 ## 4. Output: the projector
 
@@ -246,6 +264,7 @@ Keys work when either sfere window has focus, unless you are typing in a text fi
 | T | Tap tempo |
 | R | Start or stop recording |
 | A | Cycle through the scenes on or off |
+| J | Start or stop a DJ set |
 | M | Mirror the camera |
 | D | Debug marker on the output |
 | C | Show the Camera tab |

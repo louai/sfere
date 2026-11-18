@@ -18,7 +18,7 @@ from .render.post import DEFAULT_POST
 from .scenes import BIND_SOURCES, Missing
 from .touch import touch_mode, wants_xwayland
 
-TABS = ["Camera", "Audio", "Scenes", "Output", "Debug", "Help"]
+TABS = ["Camera", "Audio", "Music", "Scenes", "Output", "Debug", "Help"]
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "guide.md"
 ACCENT = (0.35, 0.25, 0.7, 1)
 RECORDING = (0.75, 0.15, 0.15, 1)
@@ -177,6 +177,12 @@ class Panels:
             app.tap_tempo()
         if self._button("Mirror (M)", app.engine.mirror):
             app.engine.mirror = not app.engine.mirror
+        dj = app.dj
+        playing = dj.playing if dj else None
+        label = (f"DJ set: {dj.tempo:.0f} BPM (J)###dj" if playing else "DJ set: starting (J)###dj") if dj \
+            else "DJ set (J)###dj"
+        if self._button(label, dj is not None):
+            app.toggle_set()
         cyc = app.cycle
         label = f"Cycle: next in {cyc.remaining(time.monotonic()):.0f} s (A)###cycle" if cyc.enabled \
             else "Cycle scenes (A)###cycle"
@@ -334,6 +340,95 @@ class Panels:
 
     def _play_video(self, v):
         self.app.engine.set_source(str(v.path), str(v.audio) if v.audio else None)
+
+    # ---------------------------------------------------------------- music
+    def tab_music(self):
+        """The DJ set: Audius tracks near the tempo of the ball's movement, mixed by sfere."""
+        from .motion_tempo import GENRES
+        im, app = self.imgui, self.app
+        cfg, mt, dj = app.settings["music"], app.motion, app.dj
+        if dj:
+            dj.engine.volume = float(cfg.get("volume", 1.0))
+        im.separator_text("DJ set")
+        keys = list(GENRES)
+        cur = cfg.get("genre", "techno")
+        im.set_next_item_width(self.px(260))
+        ch, i = im.combo("Genre", keys.index(cur) if cur in keys else 1,
+                         [f"{GENRES[k][0]}  ({GENRES[k][1]:.0f}–{GENRES[k][2]:.0f} BPM)" for k in keys])
+        if ch:
+            cfg["genre"] = keys[i]
+            mt.set_genre(keys[i])
+        self._flow_begin()
+        if dj is None:
+            if self._button("Start set (J)"):
+                app.start_set()
+        else:
+            if self._button("Stop set (J)", True):
+                app.stop_set()
+            elif self._button("Skip to the next track"):
+                dj.skip()
+        if dj:
+            line = dj.status + (f": preparing {dj.preparing}" if dj.preparing else "")
+            im.text_disabled(line)
+            if dj.error:
+                im.text_colored((1, 0.6, 0.3, 1), dj.error[:200])
+        for msg in app.dj_log[-2:]:
+            im.text_disabled(msg)
+
+        im.separator_text("Tempo from your movement")
+        if mt.confidence > 0:
+            im.text(f"Movement: {mt.raw_bpm:.0f} BPM (a cycle every {mt.cycle_s:.2f} s)")
+        else:
+            im.text_disabled("Movement: move the ball in loops or arcs and sfere counts their tempo.")
+        im.same_line()
+        im.progress_bar(float(mt.confidence), (self.px(140), 0), f"steady {mt.confidence:.0%}")
+        im.text(f"Target: {mt.target_bpm:.1f} BPM" + ("  (locked)" if mt.locked else "")
+                + (f"   playing at {dj.tempo:.1f}" if dj and dj.playing else ""))
+        _, mt.locked = im.checkbox("Lock the tempo", mt.locked)
+        im.same_line()
+        manual = mt.manual_bpm is not None
+        ch, manual = im.checkbox("Set it by hand", manual)
+        if ch:
+            mt.manual_bpm = round(mt.target_bpm) if manual else None
+        if mt.manual_bpm is not None:
+            lo, hi = mt.range
+            _, v = self._slider("BPM##manual", float(mt.manual_bpm), lo - 6.0, hi + 6.0, "%.0f")
+            mt.manual_bpm = round(v)
+        _, cfg["follow_movement"] = im.checkbox("Speed up or slow down the playing track to follow",
+                                                bool(cfg.get("follow_movement", True)))
+        if im.is_item_hovered():
+            im.set_tooltip("Up to 2 % every 8 bars. Bigger changes come with the next track.")
+
+        im.separator_text("The set")
+        queue = dj.queue() if dj else []
+        if not queue:
+            im.text_disabled("Start a set: sfere picks Audius tracks near the target tempo, in matching keys.")
+        for n, t in enumerate(queue):
+            mark = {"playing": "▶", "next": "→", "planned": "·"}[t["state"]]
+            im.text(f"{mark} {t['artist']} – {t['title']}")
+            im.same_line()
+            im.text_disabled(f"{t['bpm']:.0f} BPM  {t.get('key') or ''}")
+            im.same_line()
+            if im.small_button(f"Audius##q{n}"):
+                subprocess.Popen(["xdg-open", t["link"]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if dj and dj.history:
+            n = len(dj.history)
+            im.text_disabled(f"{n} track{'s' if n != 1 else ''} played. The set list is saved to ~/Music/sfere "
+                             "when the set stops.")
+
+        im.separator_text("Mixing")
+        bars = [4, 8, 16, 32]
+        cur = int(cfg.get("mix_bars", 16))
+        ch, i = im.combo("Mix length", bars.index(cur) if cur in bars else 2, [f"{b} bars" for b in bars])
+        if ch:
+            cfg["mix_bars"] = bars[i]
+        ch, v = self._slider("Most a track may be sped up or slowed down", float(cfg.get("max_stretch", 0.08)) * 100,
+                             2.0, 12.0, "%.0f %%")
+        if ch:
+            cfg["max_stretch"] = round(v) / 100
+        _, cfg["volume"] = self._slider("Volume##dj", float(cfg.get("volume", 1.0)), 0.0, 1.5, "%.2f")
+        im.text_disabled("Music from Audius (audius.co), by the artists shown; streamed for this set only and "
+                         "deleted when it stops. Playing it in public may need a licence from the venue.")
 
     # ---------------------------------------------------------------- audio
     def tab_audio(self):
